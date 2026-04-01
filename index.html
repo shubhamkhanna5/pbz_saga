@@ -1,0 +1,193 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta 
+      name="viewport" 
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" 
+    />
+    <title>PickleBallZ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              zinc: {
+                50: '#fafafa',
+                100: '#f4f4f5',
+                200: '#e4e4e7',
+                300: '#d4d4d8',
+                400: '#a1a1aa',
+                500: '#71717a',
+                600: '#52525b',
+                700: '#3f3f46',
+                800: '#27272a',
+                850: '#1f1f23',
+                900: '#18181b',
+                950: '#09090b',
+              },
+              aura: {
+                orange: '#FF6200',
+                gold: '#FFD700',
+                purple: '#7c3aed',
+                magenta: '#d946ef',
+                cyan: '#22d3ee',
+                red: '#ef4444', 
+                white: '#F8FAFC',
+                navy: '#1e1b4b',
+              },
+              pickle: {
+                400: '#FF6200',
+                500: '#EA580C',
+                600: '#C2410C',
+              },
+              hype: {
+                400: '#FFD700',
+                500: '#FF6200',
+                600: '#9333ea',
+              },
+              danger: {
+                500: '#DC2626',
+              }
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'aura-pulse': 'auraPulse 2s infinite',
+              'float': 'float 3s ease-in-out infinite',
+              'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
+              'shimmer': 'shimmer 2s linear infinite',
+            },
+            keyframes: {
+              auraPulse: {
+                '0%, 100%': { boxShadow: '0 0 10px currentColor', opacity: 1 },
+                '50%': { boxShadow: '0 0 25px currentColor', opacity: 0.9 },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              },
+              shake: {
+                '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+                '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+                '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
+                '40%, 60%': { transform: 'translate3d(4px, 0, 0)' },
+              },
+              shimmer: {
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(100%)' }
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* --- ANDROID STABILIZATION --- */
+      html {
+        height: 100%;
+        width: 100%;
+        background-color: #020617;
+        /* Stops the "white flash" bounce at top/bottom of page */
+        overscroll-behavior: none; 
+      }
+
+      body {
+        min-height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: transparent; /* Let background layer show through */
+        font-family: ui-sans-serif, system-ui, sans-serif, "Arial Black";
+        color: #f8fafc;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-text-size-adjust: 100%; /* Prevent Samsung font inflating */
+        overscroll-behavior-y: none;
+      }
+
+      #root {
+        /* Use 100dvh for content to ensure full height, but allow scrolling */
+        min-height: 100dvh; 
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        z-index: 1; /* Content sits above background */
+      }
+      
+      /* --- FIXED BACKGROUND LAYER --- */
+      /* Defines a static layer that DOES NOT resize when URL bar moves */
+      .bg-fixed-layer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw; 
+        height: 100vh; /* Static VH keeps background stable */
+        z-index: -1; /* Behind everything */
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+      .safe-top { padding-top: env(safe-area-inset-top); }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+      .bg-grain {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+      }
+
+      .energy-line {
+        position: absolute;
+        background: linear-gradient(to top, transparent, rgba(255, 165, 0, 0.3), transparent);
+        width: 1px;
+        height: 100px;
+        animation: energyFlow 3s infinite linear;
+      }
+      .energy-line:nth-child(even) {
+        background: linear-gradient(to top, transparent, rgba(124, 58, 237, 0.3), transparent);
+      }
+
+      @keyframes energyFlow {
+        0% { transform: translateY(100vh) scaleY(0); opacity: 0; }
+        50% { opacity: 1; }
+        100% { transform: translateY(-100vh) scaleY(2); opacity: 0; }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+  }
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="/src/index.css">
+</head>
+  <body class="w-full font-sans text-zinc-100">
+    
+    <!-- BACKGROUND LAYER (Z-Index -1) -->
+    <!-- This stays static while the body scrolls -->
+    <div class="bg-fixed-layer bg-zinc-950">
+        <div class="bg-grain"></div>
+        <div class="absolute inset-0">
+            <div class="energy-line" style="left: 10%; animation-delay: 0.1s;"></div>
+            <div class="energy-line" style="left: 25%; animation-delay: 1.5s;"></div>
+            <div class="energy-line" style="left: 40%; animation-delay: 0.8s;"></div>
+            <div class="energy-line" style="left: 60%; animation-delay: 2.2s;"></div>
+            <div class="energy-line" style="left: 80%; animation-delay: 0.5s;"></div>
+            <div class="energy-line" style="left: 90%; animation-delay: 1.2s;"></div>
+        </div>
+    </div>
+
+    <!-- CONTENT LAYER (Z-Index 1) -->
+    <div id="root"></div>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>

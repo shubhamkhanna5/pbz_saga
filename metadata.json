@@ -1,0 +1,5 @@
+{
+  "name": "PBZ Frieza Saga",
+  "description": "A no-nonsense, offline-first pickleball session manager for groups. Features auto-queueing, scoring, and history.",
+  "requestFramePermissions": []
+}
