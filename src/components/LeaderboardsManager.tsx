@@ -59,6 +59,8 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
   // Past League Standings State
   const [pastStandings, setPastStandings] = useState<any[]>([]);
   const [isPastLoading, setIsPastLoading] = useState(false);
+  const [pastError, setPastError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Sorting State
   const [leagueSort, setLeagueSort] = useState<'points' | 'ppg' | 'elo'>('ppg');
@@ -82,18 +84,20 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
 
     const fetchPast = async () => {
         setIsPastLoading(true);
+        setPastError(null);
         try {
             const stats = await getLeagueStats(targetId);
             setPastStandings(stats);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error fetching past league stats:", err);
+            setPastError(err.message || "Failed to fetch standings");
         } finally {
             setIsPastLoading(false);
         }
     };
 
     fetchPast();
-  }, [selectedLeagueId, activeTab, activeLeague, pastLeagues]);
+  }, [selectedLeagueId, activeTab, activeLeague, pastLeagues, retryCount]);
 
   const getPlayer = (id: string) => players.find(p => String(p.id) === String(id));
 
@@ -306,7 +310,18 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
              <div className="flex justify-between items-center">
                 <div className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">
                     {isPastLoading && <span className="animate-pulse">Loading Standings...</span>}
-                    {!isPastLoading && <span>Ranked by Efficiency (PPG)</span>}
+                    {pastError && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-aura-red">Error: {pastError}</span>
+                            <button 
+                                onClick={() => setRetryCount(prev => prev + 1)}
+                                className="px-2 py-1 bg-zinc-900 rounded-lg text-primary hover:bg-zinc-800 transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    )}
+                    {!isPastLoading && !pastError && <span>Ranked by Efficiency (PPG)</span>}
                 </div>
              </div>
 

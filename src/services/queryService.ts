@@ -26,7 +26,7 @@ export async function getLeaderboard(forceRefresh = false) {
     .order('points', { ascending: false })
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Leaderboard Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('Leaderboard Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
@@ -77,7 +77,7 @@ export async function getLeagueMatches(leagueId: string) {
     .order('created_at', { ascending: true });
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('League Matches Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('League Matches Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
@@ -110,7 +110,7 @@ export async function getRecentMatches(leagueId?: string, limit = 10) {
     .limit(limit);
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Recent Matches Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('Recent Matches Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
@@ -164,7 +164,7 @@ export async function getPlayers() {
     .order('name', { ascending: true })
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Players Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('Players Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any

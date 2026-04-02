@@ -21,7 +21,7 @@ export async function getActiveLeague(forceRefresh = false) {
     .single()
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('League Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('League Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
@@ -56,7 +56,7 @@ export async function getAllLeagues() {
     .order('created_at', { ascending: false })
 
   const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('All Leagues Fetch Timeout')), 8000)
+    setTimeout(() => reject(new Error('All Leagues Fetch Timeout')), 15000)
   )
 
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
