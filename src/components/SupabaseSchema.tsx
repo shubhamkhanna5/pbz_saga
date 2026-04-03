@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS public.players (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     skill INTEGER DEFAULT 1,
+    dupr_rating NUMERIC,
+    elo INTEGER DEFAULT 1200,
+    is_present BOOLEAN DEFAULT TRUE,
     games_played INTEGER DEFAULT 0,
     wins INTEGER DEFAULT 0,
     losses INTEGER DEFAULT 0,
@@ -117,6 +120,15 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='players' AND column_name='bagels_given') THEN
         ALTER TABLE public.players ADD COLUMN bagels_given INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='players' AND column_name='dupr_rating') THEN
+        ALTER TABLE public.players ADD COLUMN dupr_rating NUMERIC;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='players' AND column_name='elo') THEN
+        ALTER TABLE public.players ADD COLUMN elo INTEGER DEFAULT 1200;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='players' AND column_name='is_present') THEN
+        ALTER TABLE public.players ADD COLUMN is_present BOOLEAN DEFAULT TRUE;
     END IF;
     
     -- Leagues table migrations

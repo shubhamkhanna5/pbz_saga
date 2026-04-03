@@ -105,7 +105,7 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
         ...appState,
         players: uniquePlayers.map((p: any) => ({
           ...p,
-          isPresent: true
+          isPresent: p.isPresent ?? true
         })),
         activeLeague: activeLeague ? {
           ...activeLeague,
@@ -137,7 +137,24 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
       // 1. Push Players (Deduplicate first)
       if (targetState.players && targetState.players.length > 0) {
         const uniquePlayers = targetState.players.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+        
+        // Upsert all current players
         await upsertPlayers(uniquePlayers);
+        
+        // Optional: Clean up players in Supabase that are no longer in our local roster
+        // We only do this in God Mode manual push to ensure a clean state
+        const currentPlayerIds = uniquePlayers.map(p => p.id);
+        if (currentPlayerIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('players')
+            .delete()
+            .not('id', 'in', currentPlayerIds);
+          
+          if (deleteError) {
+            console.warn('Roster cleanup warning:', deleteError);
+            // Don't fail the whole push if cleanup fails, but log it
+          }
+        }
       }
 
       // 2. Push Leagues (Active and Past - Deduplicate by id)

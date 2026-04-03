@@ -17,12 +17,13 @@ interface LayoutWithSyncProps extends LayoutProps {
     appState?: AppState;
     onAppStateRestore?: (s: AppState) => void;
     syncStatus?: SyncStatus;
+    onRetrySync?: () => void;
     onHardReset?: () => void;
     isDarkMode: boolean;
     onToggleDarkMode: () => void;
 }
 
-const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate, isAdmin, actions, title, appState, onAppStateRestore, syncStatus, onHardReset, isDarkMode, onToggleDarkMode }) => {
+const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate, isAdmin, actions, title, appState, onAppStateRestore, syncStatus, onRetrySync, onHardReset, isDarkMode, onToggleDarkMode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
@@ -80,8 +81,8 @@ const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate
 
       {/* Sync Status Indicator */}
       {syncStatus && (
-        <div className="fixed top-[calc(env(safe-area-inset-top)+0.8rem)] right-24 z-[60] pointer-events-none">
-            <SyncStatusPill status={syncStatus} />
+        <div className="fixed top-[calc(env(safe-area-inset-top)+0.8rem)] right-24 z-[60]">
+            <SyncStatusPill status={syncStatus} onRetry={onRetrySync} />
         </div>
       )}
 

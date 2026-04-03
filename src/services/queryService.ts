@@ -189,6 +189,9 @@ export async function getPlayers() {
     totalPoints: p.points || p.total_points || 0,
     bonusPoints: p.bonus_points || 0,
     noShows: p.no_shows || 0,
+    elo: p.elo || 1200,
+    duprRating: p.dupr_rating || null,
+    isPresent: p.is_present ?? true,
     badges: p.badges || [],
     stats: p.stats || {
       wins: p.wins || 0,

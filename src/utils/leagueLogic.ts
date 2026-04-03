@@ -173,28 +173,29 @@ function buildAllPairs(players: string[]): [string, string][] {
   return pairs;
 }
 
+function shuffle<T>(array: T[], rng: () => number): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 // ============================================================================
 // LAYER 2 — OPTIMAL SINGLES MATCHING
 // ============================================================================
 
 function buildOptimalSingles(
   players: string[],
-  history: SchedulerState
+  rng: () => number
 ): { teamA: string[]; teamB: string[] }[] {
-  const unused = new Set(players);
+  const shuffled = shuffle(players, rng);
   const matches: { teamA: string[]; teamB: string[] }[] = [];
-
-  const allPairs = buildAllPairs(players).sort((a, b) => {
-    const todayPenalty = (history.opposedToday.get(pairKey(a[0], a[1])) || 0) * 1000;
-    const sagaPenalty = (history.singlesCoverage.get(pairKey(a[0], a[1])) || 0);
-    return todayPenalty + sagaPenalty;
-  });
-
-  for (const [p1, p2] of allPairs) {
-    if (unused.has(p1) && unused.has(p2)) {
-      matches.push({ teamA: [p1], teamB: [p2] });
-      unused.delete(p1);
-      unused.delete(p2);
+  
+  for (let i = 0; i < shuffled.length; i += 2) {
+    if (i + 1 < shuffled.length) {
+      matches.push({ teamA: [shuffled[i]], teamB: [shuffled[i + 1]] });
     }
   }
 
@@ -286,6 +287,254 @@ function buildOptimalDoubles(
 // Guarantees: rest enforced (≥1 round gap) · max 1 singles/player/day · doublesOnly at ≥6/court
 // ============================================================================
 
+// ============================================================================
+// PBZ DAY SCHEDULER ENGINE (FINAL DESIGN)
+// ============================================================================
+
+/**
+ * Phase 1: Singles Generation
+ * Everyone gets exactly 1 singles match.
+ */
+function generateSinglesPhase(players: string[], rng: () => number): [string, string][] {
+  const matches = buildOptimalSingles(players, rng);
+  return matches.map(m => [m.teamA[0], m.teamB[0]]);
+}
+
+function scoreRound(
+  matches: { teamA: string[]; teamB: string[] }[],
+  partnerMapToday: Map<string, Set<string>>,
+  opponentMapToday: Map<string, Set<string>>,
+  courtMapToday: Map<string, Map<number, number>>,
+  matchesPlayed: Map<string, number>
+): number {
+  let score = 0;
+
+  matches.forEach((m, courtIdx) => {
+    const courtId = courtIdx + 1;
+    const allInMatch = [...m.teamA, ...m.teamB];
+
+    for (const a of m.teamA) {
+      for (const b of m.teamB) {
+        // repeat opponent = bad
+        if (opponentMapToday.get(a)?.has(b)) {
+          score += 1000;
+        }
+        // encourage new opponents
+        else {
+          score -= 50;
+        }
+      }
+    }
+
+    // Court Rotation Penalty (Fixes "Central Player" effect)
+    allInMatch.forEach(p => {
+      const timesOnThisCourt = courtMapToday.get(p)?.get(courtId) || 0;
+      if (timesOnThisCourt > 0) {
+        score += timesOnThisCourt * 2000; // Force rotation
+      }
+    });
+  });
+
+  // Global Load Balance (Fixes pairing bias inside round)
+  if (matches.length > 1) {
+    const matchAverages = matches.map(m => 
+      [...m.teamA, ...m.teamB].reduce((sum, p) => sum + (matchesPlayed.get(p) || 0), 0) / 4
+    );
+    const diff = Math.abs(matchAverages[0] - matchAverages[1]);
+    score += diff * 5000; // Ensure "heavy" and "light" players are distributed across courts
+  }
+
+  return score;
+}
+
+function buildOptimalRound(
+  players: string[],
+  partnerMapToday: Map<string, Set<string>>,
+  opponentMapToday: Map<string, Set<string>>,
+  courtMapToday: Map<string, Map<number, number>>,
+  matchesPlayed: Map<string, number>,
+  rng: () => number
+): { teamA: string[]; teamB: string[] }[] {
+  let bestRoundMatches: { teamA: string[]; teamB: string[] }[] = [];
+  let bestRoundScore = Infinity;
+
+  const iterations = players.length <= 12 ? 1500 : 800;
+
+  for (let i = 0; i < iterations; i++) {
+    const pool = shuffle(players, rng);
+    const currentRoundMatches: { teamA: string[]; teamB: string[] }[] = [];
+    let possible = true;
+
+    // Split pool into matches (Court 1, Court 2, etc.)
+    const courtCount = players.length / 4;
+    for (let c = 0; c < courtCount; c++) {
+      const g = pool.slice(c * 4, (c + 1) * 4);
+      
+      let bestSplit: { tA: string[]; tB: string[]; score: number } | null = null;
+      const combos = [
+        { tA: [g[0], g[1]], tB: [g[2], g[3]] },
+        { tA: [g[0], g[2]], tB: [g[1], g[3]] },
+        { tA: [g[0], g[3]], tB: [g[1], g[2]] },
+      ];
+
+      for (const { tA, tB } of combos) {
+        if (partnerMapToday.get(tA[0])?.has(tA[1]) || partnerMapToday.get(tB[0])?.has(tB[1])) continue;
+
+        let score = 0;
+        tA.forEach(pa => tB.forEach(pb => {
+          if (opponentMapToday.get(pa)?.has(pb)) score += 1000;
+          else score -= 50;
+        }));
+
+        if (!bestSplit || score < bestSplit.score) {
+          bestSplit = { tA, tB, score };
+        }
+      }
+
+      if (!bestSplit) {
+        possible = false;
+        break;
+      }
+      currentRoundMatches.push({ teamA: bestSplit.tA, teamB: bestSplit.tB });
+    }
+
+    if (possible) {
+      const currentRoundScore = scoreRound(
+        currentRoundMatches, 
+        partnerMapToday, 
+        opponentMapToday,
+        courtMapToday,
+        matchesPlayed
+      );
+      if (currentRoundScore < bestRoundScore) {
+        bestRoundScore = currentRoundScore;
+        bestRoundMatches = currentRoundMatches;
+      }
+    }
+  }
+
+  return bestRoundMatches;
+}
+
+/**
+ * Phase 2: Doubles Engine
+ * Queue-based rotation with harmony (sit-out priority).
+ */
+function generateDoublesPhase(
+  players: string[],
+  courts: number,
+  rounds: number,
+  startRound: number,
+  rng: () => number,
+  initialMatchesPlayed?: Map<string, number>,
+  initialLastPlayedRound?: Map<string, number>,
+  initialOpponentMap?: Map<string, Set<string>>
+): LeagueMatch[] {
+  const partnerMapToday = new Map<string, Set<string>>();
+  const opponentMapToday = new Map<string, Set<string>>();
+  const matchesPlayed = new Map<string, number>();
+  const lastPlayedRound = new Map<string, number>();
+  const courtMapToday = new Map<string, Map<number, number>>();
+
+  players.forEach(p => {
+    partnerMapToday.set(p, new Set());
+    opponentMapToday.set(p, new Set(initialOpponentMap?.get(p) || []));
+    matchesPlayed.set(p, initialMatchesPlayed?.get(p) || 0);
+    lastPlayedRound.set(p, initialLastPlayedRound?.get(p) || (startRound - 1));
+    courtMapToday.set(p, new Map());
+  });
+
+  const schedule: LeagueMatch[] = [];
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = startRound + r;
+
+    // 1. CLEAN PLAYER SELECTION (NO SITTING LOGIC)
+    const playersNeeded = courts * 4;
+
+    // Pre-compute random scores for deterministic tie-breaking within this round
+    const randomScores = new Map<string, number>();
+    players.forEach(p => randomScores.set(p, rng()));
+
+    const sortedPlayers = [...players].sort((a, b) => {
+      // priority 1: fewest matches played (CRITICAL for fairness)
+      const mpA = matchesPlayed.get(a) || 0;
+      const mpB = matchesPlayed.get(b) || 0;
+      if (mpA !== mpB) return mpA - mpB;
+
+      // priority 2: rest age (longer rest = higher priority)
+      const lastA = lastPlayedRound.get(a) || 0;
+      const lastB = lastPlayedRound.get(b) || 0;
+      if (lastA !== lastB) return lastA - lastB;
+
+      // priority 3: opponent variety (fewer opponents played today = higher priority)
+      const oppA = opponentMapToday.get(a)?.size || 0;
+      const oppB = opponentMapToday.get(b)?.size || 0;
+      if (oppA !== oppB) return oppA - oppB;
+
+      // priority 4: randomness
+      return (randomScores.get(a) || 0) - (randomScores.get(b) || 0);
+    });
+
+    let activePlayers = sortedPlayers.slice(0, playersNeeded);
+
+    // Ensure multiple of 4
+    activePlayers = activePlayers.slice(0, activePlayers.length - (activePlayers.length % 4));
+    if (activePlayers.length < 4) continue;
+
+    // 2. GLOBAL ROUND OPTIMIZER
+    const roundMatches = buildOptimalRound(
+      activePlayers,
+      partnerMapToday,
+      opponentMapToday,
+      courtMapToday,
+      matchesPlayed,
+      rng
+    );
+
+    // 3. COMMIT ROUND
+    roundMatches.forEach((m, idx) => {
+      const courtId = idx + 1;
+      schedule.push({
+        id: generateId(),
+        dayId: 'temporary',
+        courtId,
+        round: currentRound,
+        teamA: m.teamA,
+        teamB: m.teamB,
+        isCompleted: false,
+        type: 'doubles',
+        status: 'scheduled',
+        noShowPlayerIds: [],
+        orderIndex: schedule.length,
+        events: [],
+        highlights: [],
+      });
+
+      [...m.teamA, ...m.teamB].forEach(p => {
+        matchesPlayed.set(p, (matchesPlayed.get(p) || 0) + 1);
+        lastPlayedRound.set(p, currentRound);
+        
+        // Track court usage
+        const pMap = courtMapToday.get(p)!;
+        pMap.set(courtId, (pMap.get(courtId) || 0) + 1);
+      });
+
+      partnerMapToday.get(m.teamA[0])?.add(m.teamA[1]);
+      partnerMapToday.get(m.teamA[1])?.add(m.teamA[0]);
+      partnerMapToday.get(m.teamB[0])?.add(m.teamB[1]);
+      partnerMapToday.get(m.teamB[1])?.add(m.teamB[0]);
+
+      m.teamA.forEach(p1 => m.teamB.forEach(p2 => {
+        opponentMapToday.get(p1)?.add(p2);
+        opponentMapToday.get(p2)?.add(p1);
+      }));
+    });
+  }
+
+  return schedule;
+}
+
 export function generateLeagueDay(
   leagueId: string,
   week: number,
@@ -296,9 +545,7 @@ export function generateLeagueDay(
   history: SchedulerState,
   standings?: LeagueStanding[]
 ): LeagueDay {
-  const isFinalLeagueDay = week === 4 && day === 2;
-
-  // ── FIX 4: Division auto-split (before anything else) ─────────────────────
+  // ── Division auto-split ─────────────────────
   if (shouldSplitIntoDivisions(playerIds.length, courtCount)) {
     const divisionCount = computeDivisionCount(playerIds.length, courtCount);
     const divisions = splitIntoBalancedDivisions(playerIds, standings, divisionCount);
@@ -323,376 +570,104 @@ export function generateLeagueDay(
       date: Date.now(),
       seed: parseInt(leagueId.substring(0, 8), 16) + week * 100 + day,
       status: 'generated',
-      // Flatten all division matches into a single day (courts already non-overlapping)
       matches: divisionDays.flatMap(d => d.matches),
       partners: [],
       attendees: playerIds,
       config: { hours, courts: autoScaleCourts(playerIds.length, courtCount) },
-      divisions: divisionDays, // keep per-division metadata for UI
+      divisions: divisionDays,
     };
   }
 
-  // ── FIX 1: Auto-scale courts (with venue cap) ─────────────────────────────
   courtCount = autoScaleCourts(playerIds.length, courtCount);
-
-  // ── FIX 1.5: Attendance Filtering (Prevent Overuse) ──────────────────────
-  // Filter out players who have already played max games (if history exists)
-  // RELAXED FOR FINAL DAY: Ensure full roster is used
-  const dayAttendees = isFinalLeagueDay 
-    ? playerIds 
-    : playerIds.filter(id => 
-        history.lastDayCounts[id] === undefined || 
-        history.lastDayCounts[id] < 5
-      );
-
-  // ── FIX 2: Doubles-only density rule ─────────────────────────────────────
-  const playersPerCourt = dayAttendees.length / courtCount;
-  const doublesOnlyMode = playersPerCourt >= 6;
-  const highDensityMode = playersPerCourt < 5; // Everyone plays almost every round
+  const baseSeed = parseInt(leagueId.substring(0, 8), 16) + week * 100 + day;
+  const rng = mulberry32(baseSeed);
 
   const ROUND_DURATION_MIN = MATCH_CONFIG.MATCH_DURATION_MIN;
   const totalRounds = Math.floor((hours * 60) / ROUND_DURATION_MIN);
   
-  // Debug Round Count
-  if (import.meta.env.DEV) {
-    console.log(`[Scheduler] Hours: ${hours} → Minutes: ${hours*60} → Rounds: ${totalRounds} | Density: ${playersPerCourt.toFixed(1)}`);
-  }
+  const matches: LeagueMatch[] = [];
+  
+  // 1. PHASE 1: SINGLES
+  const singlesPairs = generateSinglesPhase(playerIds, rng);
+  let currentRound = 1;
+  let lastPlayedRound = new Map<string, number>();
+  let matchesPlayed = new Map<string, number>();
+  let opponentMap = new Map<string, Set<string>>();
 
-  // Singles phase: expanded to allow better streak breaking
-  const singlesPhaseStart = Math.max(1, Math.floor(totalRounds / 4));
-  const singlesPhaseEnd = Math.min(totalRounds, Math.ceil(3 * totalRounds / 4) + 1);
-
-  // ── Local history (deep copy — no mutation of caller's state) ─────────────
-  const localHistory: SchedulerState = {
-    partnered: new Map(history.partnered),
-    opposed: new Map(history.opposed),
-    partneredToday: new Map(),
-    opposedToday: new Map(),
-    lastAbsoluteSession: { ...history.lastAbsoluteSession },
-    singlesCoverage: new Map(history.singlesCoverage),
-    partnerCoverage: new Map(history.partnerCoverage),
-    lastDayCounts: {},
-    singlesPlayedCount: { ...history.singlesPlayedCount },
-  };
-
-  // const dayAttendees = [...playerIds]; // REMOVED (defined above)
-  const baseSeed = parseInt(leagueId.substring(0, 8), 16) + week * 100 + day;
-  const rng = mulberry32(baseSeed);
-
-  // ── Per-player daily tracking ─────────────────────────────────────────────
-  const gamesPlayedToday: Record<string, number> = {};
-  const lastRoundPlayed: Record<string, number> = {};
-  const lastMatchType: Record<string, 'singles' | 'doubles' | null> = {};
-  const consecutiveDoubles: Record<string, number> = {};
-  const modeCount: Record<string, { singles: number; doubles: number }> = {};
-  const singlesQuota: Record<string, boolean> = {}; // true = already played singles today
-
-  dayAttendees.forEach(p => {
-    gamesPlayedToday[p] = 0;
-    lastRoundPlayed[p] = -99;
-    lastMatchType[p] = null;
-    consecutiveDoubles[p] = 0;
-    modeCount[p] = { singles: 0, doubles: 0 };
-    singlesQuota[p] = false;
+  playerIds.forEach(p => {
+    lastPlayedRound.set(p, 0);
+    matchesPlayed.set(p, 0);
+    opponentMap.set(p, new Set());
   });
 
-  const generatedMatches: LeagueMatch[] = [];
-  const debugLog: SchedulerDebugEntry[] = [];
-  const _perfStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  // Distribute singles into rounds
+  for (let i = 0; i < singlesPairs.length; i += courtCount) {
+    const roundPairs = singlesPairs.slice(i, i + courtCount);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ROUND LOOP
-  // ══════════════════════════════════════════════════════════════════════════
-  for (let r = 1; r <= totalRounds; r++) {
-
-    // ── Layer 1: Candidate selection ──────────────────────────────────────
-    // Priority: fewest games → singles-quota owed (in phase) → streak penalty → rest age → RNG
-    const inSinglesPhase = r >= singlesPhaseStart && r <= singlesPhaseEnd;
-    const MAX_CONSECUTIVE_DOUBLES = 3;
-    
-    const candidates = [...dayAttendees]
-      .filter(p => {
-        const roundsSince = r - lastRoundPlayed[p];
-        // Hard rest after singles — must skip next round (unless high density)
-        if (lastMatchType[p] === 'singles' && !highDensityMode) return roundsSince >= 2;
-        
-        // Hard cap: blocked after 3 consecutive doubles (unless high density)
-        if (consecutiveDoubles[p] >= MAX_CONSECUTIVE_DOUBLES && !highDensityMode) return roundsSince >= 2;
-        
-        return true;
-      })
-      .sort((a, b) => {
-        const totalDiff = gamesPlayedToday[a] - gamesPlayedToday[b];
-        if (totalDiff !== 0) return totalDiff;
-
-        // During singles phase: surface players who still owe a singles match
-        // Priority 1: Players who have NEVER played singles in the saga
-        // Priority 2: Players who haven't played singles today
-        // Priority 3: Players with the longest doubles streak (to break it)
-        if (inSinglesPhase || r > singlesPhaseEnd) {
-          const aSagaSingles = history.singlesPlayedCount[a] || 0;
-          const bSagaSingles = history.singlesPlayedCount[b] || 0;
-          if (aSagaSingles !== bSagaSingles) return aSagaSingles - bSagaSingles;
-
-          const aOwes = singlesQuota[a] ? 0 : 1;
-          const bOwes = singlesQuota[b] ? 0 : 1;
-          if (aOwes !== bOwes) return bOwes - aOwes;
-          
-          // Break streaks!
-          if (consecutiveDoubles[a] !== consecutiveDoubles[b]) return consecutiveDoubles[b] - consecutiveDoubles[a];
-        }
-
-        // Soft streak penalty: prefer rested players over back-to-back doubles
-        const streakA = lastMatchType[a] === 'doubles' && r - lastRoundPlayed[a] === 1
-          ? consecutiveDoubles[a] : 0;
-        const streakB = lastMatchType[b] === 'doubles' && r - lastRoundPlayed[b] === 1
-          ? consecutiveDoubles[b] : 0;
-        if (streakA !== streakB) return streakA - streakB;
-
-        // FIX 4: Balance Late Players (Historical Fairness)
-        const historyA = (localHistory.lastAbsoluteSession[a] || 0);
-        const historyB = (localHistory.lastAbsoluteSession[b] || 0);
-        if (historyA !== historyB) return historyA - historyB;
-
-        return rng() - 0.5;
-      });
-
-    // Graceful cap relaxation: if cap + singles-rest blocks so many players that
-    // we can't fill courtCount courts, readmit cap-blocked players (lowest streak first).
-    const targetPool = courtCount * 4;
-    let available = candidates;
-
-    if (available.length < targetPool) {
-      const capBlocked = dayAttendees
-        .filter(p => {
-          // Only relax the consecutive-doubles cap, never the singles rest rule (unless high density)
-          if (lastMatchType[p] === 'singles' && !highDensityMode) return false;
-          const roundsSince = r - lastRoundPlayed[p];
-          // Relax cap only if below absolute hard limit (5)
-          return consecutiveDoubles[p] >= MAX_CONSECUTIVE_DOUBLES && consecutiveDoubles[p] < 5 && (highDensityMode || roundsSince < 2);
-        })
-        .sort((a, b) => consecutiveDoubles[a] - consecutiveDoubles[b]); // lowest streak first
-
-      const needed = targetPool - available.length;
-      available = [...available, ...capBlocked.slice(0, needed)];
-    }
-
-    // Final fallback: if still < 2, use anyone not on hard rest or hard cap
-    if (available.length < 2) {
-      available = dayAttendees.filter(p => {
-        const roundsSince = r - lastRoundPlayed[p];
-        // Hard Constraint 1: Singles Rest (unless high density)
-        if (lastMatchType[p] === 'singles' && roundsSince < 2 && !highDensityMode) return false;
-        // Hard Constraint 2: Absolute max doubles streak (assertion fails at > 5)
-        if (consecutiveDoubles[p] >= 5) return false;
-        return true;
-      }).sort((a, b) => gamesPlayedToday[a] - gamesPlayedToday[b]);
-    }
-
-    available = available.slice(0, targetPool);
-
-    if (available.length < 2) continue;
-
-    // ── Layer 2: Round composition ────────────────────────────────────────
-    const roundMatches: {
-      teamA: string[];
-      teamB: string[];
-      type: 'singles' | 'doubles';
-    }[] = [];
-    const usedInRound = new Set<string>();
-
-    // Starvation guard: force singles if quota-unpaid players can't get singles
-    // before rounds run out — even outside the phase window
-    const playersOwingSingles = dayAttendees.filter(p => !singlesQuota[p]);
-    const roundsRemaining = totalRounds - r + 1;
-    const singlesMatchesNeeded = Math.ceil(playersOwingSingles.length / 2);
-    
-    // Streak breaker: force singles for players approaching the limit
-    const needsStreakBreak = available.some(p => !singlesQuota[p] && consecutiveDoubles[p] >= 3);
-
-    // FIX 3: Stricter starvation guard
-    const forceSinglesThisRound =
-      !doublesOnlyMode &&
-      playersOwingSingles.length >= 2 &&
-      (singlesMatchesNeeded >= roundsRemaining || needsStreakBreak);
-
-    if (!doublesOnlyMode && (inSinglesPhase || forceSinglesThisRound)) {
-      const singlesCandidates = available.filter(p => !singlesQuota[p]);
-
-      // While we have at least 2 players who need singles AND we have courts available
-      while (singlesCandidates.length >= 2 && roundMatches.length < courtCount) {
-        const singlesMatches = buildOptimalSingles(singlesCandidates, localHistory);
-        if (singlesMatches.length > 0) {
-          const s = singlesMatches[0];
-          roundMatches.push({ ...s, type: 'singles' });
-          [...s.teamA, ...s.teamB].forEach(p => {
-            usedInRound.add(p);
-            singlesQuota[p] = true; // quota consumed — no more singles this day
-            // Remove from candidates for this round
-            const idxA = singlesCandidates.indexOf(s.teamA[0]);
-            if (idxA > -1) singlesCandidates.splice(idxA, 1);
-            const idxB = singlesCandidates.indexOf(s.teamB[0]);
-            if (idxB > -1) singlesCandidates.splice(idxB, 1);
-          });
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Doubles phase — fill remaining courts
-    // Cap candidate pool to bound O(n⁴) combinatorial search
-    const MAX_DOUBLES_CANDIDATES = courtCount * 6;
-    if (roundMatches.length < courtCount) {
-      const remaining = available
-        .filter(p => !usedInRound.has(p))
-        .slice(0, MAX_DOUBLES_CANDIDATES);
-      if (remaining.length >= 4) {
-        const doublesMatches = buildOptimalDoubles(remaining, localHistory, rng);
-        doublesMatches
-          .slice(0, courtCount - roundMatches.length)
-          .forEach(d => {
-            roundMatches.push({ ...d, type: 'doubles' });
-            [...d.teamA, ...d.teamB].forEach(p => usedInRound.add(p));
-          });
-      }
-    }
-
-    // Edge case: nothing built → force singles fallback
-    if (roundMatches.length === 0 && available.length >= 2) {
-      const singlesCandidates = available.filter(p => !singlesQuota[p]);
-      if (singlesCandidates.length >= 2) {
-        const fallback = buildOptimalSingles(singlesCandidates, localHistory);
-        if (fallback.length > 0) {
-          roundMatches.push({ ...fallback[0], type: 'singles' });
-          [...fallback[0].teamA, ...fallback[0].teamB].forEach(p => usedInRound.add(p));
-        }
-      }
-    }
-
-    if (roundMatches.length === 0) continue;
-
-    // ── Debug log entry ───────────────────────────────────────────────────
-    // Performance guard
-    if (typeof performance !== 'undefined' && performance.now() - _perfStart > 100) {
-      console.warn(`[Scheduler] Slow round ${r}: ${(performance.now() - _perfStart).toFixed(1)}ms elapsed`);
-    }
-
-    if (import.meta.env.DEV) {
-      debugLog.push({
-        round: r,
-        candidates: candidates.map(p => p),
-        available: available.map(p => p),
-        forcedSingles: forceSinglesThisRound ?? false,
-        singlesPlayers: roundMatches.filter(m => m.type === 'singles').flatMap(m => [...m.teamA, ...m.teamB]),
-        doublesMatches: roundMatches.filter(m => m.type === 'doubles').length,
-        benchedPlayers: dayAttendees.filter(p => !usedInRound.has(p)),
-        reason: forceSinglesThisRound
-          ? 'starvation-guard'
-          : inSinglesPhase
-            ? 'singles-phase'
-            : 'doubles-only-phase',
-      });
-    }
-
-    // ── Layer 3: Record matches + update local state ───────────────────────
-    let courtIdx = 1;
-    roundMatches.forEach(m => {
-      generatedMatches.push({
+    roundPairs.forEach((pair, idx) => {
+      matches.push({
         id: generateId(),
         dayId: 'temporary',
-        courtId: courtIdx++,
-        round: r,
-        teamA: m.teamA,
-        teamB: m.teamB,
+        courtId: idx + 1,
+        round: currentRound,
+        teamA: [pair[0]],
+        teamB: [pair[1]],
         isCompleted: false,
-        type: m.type,
+        type: 'singles',
         status: 'scheduled',
         noShowPlayerIds: [],
-        orderIndex: generatedMatches.length,
+        orderIndex: matches.length,
         events: [],
         highlights: [],
       });
-
-      if (m.type === 'doubles') {
-        if (m.teamA.length === 2) {
-          const keyA = pairKey(m.teamA[0], m.teamA[1]);
-          localHistory.partnered.set(keyA, (localHistory.partnered.get(keyA) || 0) + 1);
-          localHistory.partneredToday.set(keyA, (localHistory.partneredToday.get(keyA) || 0) + 1);
-          localHistory.partnerCoverage.set(keyA, (localHistory.partnerCoverage.get(keyA) || 0) + 1);
-        }
-        if (m.teamB.length === 2) {
-          const keyB = pairKey(m.teamB[0], m.teamB[1]);
-          localHistory.partnered.set(keyB, (localHistory.partnered.get(keyB) || 0) + 1);
-          localHistory.partneredToday.set(keyB, (localHistory.partneredToday.get(keyB) || 0) + 1);
-          localHistory.partnerCoverage.set(keyB, (localHistory.partnerCoverage.get(keyB) || 0) + 1);
-        }
-        // FIX 5: Update opposed intra-day for doubles
-        m.teamA.forEach(a => m.teamB.forEach(b => {
-          const key = pairKey(a, b);
-          localHistory.opposed.set(key, (localHistory.opposed.get(key) || 0) + 1);
-          localHistory.opposedToday.set(key, (localHistory.opposedToday.get(key) || 0) + 1);
-        }));
-      } else {
-        const keyS = pairKey(m.teamA[0], m.teamB[0]);
-        localHistory.singlesCoverage.set(keyS, (localHistory.singlesCoverage.get(keyS) || 0) + 1);
-        // FIX 5: Update opposed intra-day for singles
-        localHistory.opposed.set(keyS, (localHistory.opposed.get(keyS) || 0) + 1);
-        localHistory.opposedToday.set(keyS, (localHistory.opposedToday.get(keyS) || 0) + 1);
-      }
-
-      // Update per-player tracking
-      [...m.teamA, ...m.teamB].forEach(p => {
-        gamesPlayedToday[p]++;
-        lastRoundPlayed[p] = r;
-        lastMatchType[p] = m.type;
-        localHistory.lastAbsoluteSession[p] = r;
-        if (m.type === 'singles') {
-          modeCount[p].singles++;
-          consecutiveDoubles[p] = 0; // singles resets the streak
-        } else {
-          modeCount[p].doubles++;
-          consecutiveDoubles[p]++;
-        }
-      });
+      
+      lastPlayedRound.set(pair[0], currentRound);
+      lastPlayedRound.set(pair[1], currentRound);
+      matchesPlayed.set(pair[0], (matchesPlayed.get(pair[0]) || 0) + 1);
+      matchesPlayed.set(pair[1], (matchesPlayed.get(pair[1]) || 0) + 1);
+      opponentMap.get(pair[0])?.add(pair[1]);
+      opponentMap.get(pair[1])?.add(pair[0]);
     });
 
-    // FIX: Reset consecutiveDoubles for anyone who rested this round
-    dayAttendees.forEach(p => {
-      if (!usedInRound.has(p)) {
-        consecutiveDoubles[p] = 0;
-      }
-    });
+    currentRound++;
   }
 
-  const result: LeagueDay = {
+  // 1.5 BUFFER ROUND (Optional but recommended for fatigue)
+  // If we have a lot of players, we can afford a buffer round where 
+  // those who just played singles rest.
+  if (playerIds.length > courtCount * 4) {
+    currentRound++;
+  }
+
+  // 2. PHASE 2: DOUBLES
+  const remainingRounds = totalRounds - currentRound + 1;
+  if (remainingRounds > 0) {
+    const doublesMatches = generateDoublesPhase(
+      playerIds,
+      courtCount,
+      remainingRounds,
+      currentRound,
+      rng,
+      matchesPlayed,
+      lastPlayedRound,
+      opponentMap
+    );
+    matches.push(...doublesMatches);
+  }
+
+  return {
     id: generateId(),
     week,
     day,
     date: Date.now(),
     seed: baseSeed,
     status: 'generated',
-    matches: generatedMatches,
+    matches,
     partners: [],
-    attendees: dayAttendees,
+    attendees: playerIds,
     config: { hours, courts: courtCount },
-    debugLog,
+    debugLog: [],
   };
-
-  if (import.meta.env.DEV) {
-    const violations = assertDayInvariants(result);
-    if (violations.length > 0) {
-      const filtered = isFinalLeagueDay
-        ? violations.filter(v => v.type !== 'partner-repeat')
-        : violations;
-
-      if (filtered.length > 0) {
-        console.error('[Scheduler] Invariant violations:', JSON.stringify(filtered, null, 2));
-      }
-    }
-  }
-
-  return result;
 }
 
 // ============================================================================

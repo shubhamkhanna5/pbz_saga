@@ -5,9 +5,10 @@ export type SyncStatus = 'synced' | 'syncing' | 'offline';
 
 interface Props {
   status: SyncStatus;
+  onRetry?: () => void;
 }
 
-export function SyncStatusPill({ status }: Props) {
+export function SyncStatusPill({ status, onRetry }: Props) {
   const map = {
     synced: {
       label: 'SYNCED',
@@ -32,7 +33,10 @@ export function SyncStatusPill({ status }: Props) {
   const s = map[status];
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border ${s.border} transition-all duration-500 ${s.glow}`}>
+    <div 
+        onClick={status === 'offline' ? onRetry : undefined}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border ${s.border} transition-all duration-500 ${s.glow} ${status === 'offline' ? 'cursor-pointer hover:bg-zinc-900 pointer-events-auto' : 'pointer-events-none'}`}
+    >
       <div className="relative">
         <div className={`w-1.5 h-1.5 rounded-full ${s.color} relative z-10`} />
         {status === 'syncing' && (
@@ -40,7 +44,7 @@ export function SyncStatusPill({ status }: Props) {
         )}
       </div>
       <span className="text-[9px] font-black tracking-widest text-zinc-400">
-        {s.label}
+        {status === 'offline' ? 'RETRY SYNC' : s.label}
       </span>
     </div>
   );

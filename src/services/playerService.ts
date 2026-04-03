@@ -40,6 +40,9 @@ export async function upsertPlayers(players: any[]) {
       id: p.id,
       name: p.name,
       skill: p.skill,
+      dupr_rating: p.duprRating || null,
+      elo: p.elo || 1200,
+      is_present: p.isPresent ?? true,
       games_played: p.gamesPlayed || 0,
       wins: p.wins || p.stats?.wins || 0,
       losses: p.losses || p.stats?.losses || 0,
@@ -50,7 +53,14 @@ export async function upsertPlayers(players: any[]) {
       bonus_points: p.bonusPoints || p.stats?.bonusPoints || 0,
       no_shows: p.noShows || p.stats?.noShows || 0,
       badges: p.badges || [],
-      stats: p.stats || {}
+      stats: {
+        ...(p.stats || {}),
+        elo: p.elo,
+        duprRating: p.duprRating,
+        joinedAtDay: p.joinedAtDay,
+        isMidSeason: p.isMidSeason,
+        lastPartnerId: p.lastPartnerId
+      }
     })), { onConflict: 'id' })
 
   if (error) {
@@ -59,4 +69,19 @@ export async function upsertPlayers(players: any[]) {
   }
 
   return data
+}
+
+/**
+ * Delete a player
+ */
+export async function deletePlayer(playerId: string) {
+  const { error } = await supabase
+    .from('players')
+    .delete()
+    .eq('id', playerId)
+
+  if (error) {
+    console.error('Error deleting player:', error)
+    throw error
+  }
 }

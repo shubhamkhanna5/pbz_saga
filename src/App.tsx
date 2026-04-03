@@ -59,123 +59,146 @@ const App: React.FC = () => {
   }, [state, isRestoring]);
 
   // --- SUPABASE-FIRST BOOT SEQUENCE ---
-  useEffect(() => {
-    const bootSequence = async () => {
-        setSyncStatus('syncing'); 
-        try {
-            // Create a timeout for the entire boot sequence
-            const bootPromise = (async () => {
-                // 1. Fetch Players from Supabase
-                const players = await getPlayers();
-                
-                // 2. Fetch Active League from Supabase
-                const league = await getActiveLeague().catch(() => null);
-                setSupabaseLeague(league);
-                console.log("🏆 ACTIVE LEAGUE FETCHED:", league?.name);
+  const bootSequence = useCallback(async (retryCount = 0) => {
+    setSyncStatus('syncing'); 
+    try {
+        // Create a timeout for the entire boot sequence - increased to 30s
+        const bootPromise = (async () => {
+            // 1. Fetch Players from Supabase
+            const players = await getPlayers();
+            
+            // 2. Fetch Active League from Supabase
+            const league = await getActiveLeague().catch(() => null);
+            setSupabaseLeague(league);
+            console.log("🏆 ACTIVE LEAGUE FETCHED:", league?.name);
 
-                // 3. Fetch All Leagues (to populate past leagues)
-                const allLeagues = await getAllLeagues().catch(() => []);
-                const pastLeagues = allLeagues.filter((l: any) => l.id !== league?.id);
-                console.log("📚 OTHER LEAGUES FETCHED:", pastLeagues.length, pastLeagues.map(l => l.name));
+            // 3. Fetch All Leagues (to populate past leagues)
+            const allLeagues = await getAllLeagues().catch(() => []);
+            const pastLeagues = allLeagues.filter((l: any) => l.id !== league?.id);
+            console.log("📚 OTHER LEAGUES FETCHED:", pastLeagues.length, pastLeagues.map(l => l.name));
 
-                return { players, league, pastLeagues };
-            })();
+            return { players, league, pastLeagues };
+        })();
 
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Boot Sequence Timeout')), 15000)
-            );
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Boot Sequence Timeout')), 30000)
+        );
 
-            const { players, league, pastLeagues } = await Promise.race([bootPromise, timeoutPromise]) as any;
+        const { players, league, pastLeagues } = await Promise.race([bootPromise, timeoutPromise]) as any;
 
-            // 4. Hydrate Local State
-            setState(prev => {
-                // Merge players: Prefer the version with more games played to avoid overwriting local stats with empty cloud data
-                const mergedPlayers = [...prev.players];
-                
-                (players || []).forEach(sp => {
-                    const localIdx = mergedPlayers.findIndex(p => p.id === sp.id);
-                    if (localIdx === -1) {
-                        mergedPlayers.push(sp);
-                    } else {
-                        const localPlayer = mergedPlayers[localIdx];
-                        const spGames = sp.gamesPlayed || sp.games_played || 0;
-                        const localGames = localPlayer.gamesPlayed || (localPlayer.stats?.wins || 0) + (localPlayer.stats?.losses || 0);
-                        
-                        // If Supabase has more or equal games, or if local is empty, use Supabase
-                        if (spGames >= localGames) {
-                            mergedPlayers[localIdx] = sp;
-                        }
-                    }
-                });
-
-                // --- CLEANUP: Deduplicate by name and remove empty "extra" players ---
-                const cleanedPlayers = mergedPlayers.reduce((acc: Player[], current) => {
-                    const normalizedName = current.name?.toLowerCase().trim() || "";
-                    if (!normalizedName) return acc;
-
-                    const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName);
-                    const currentGames = current.gamesPlayed || (current.stats?.wins || 0) + (current.stats?.losses || 0);
+        // 4. Hydrate Local State
+        setState(prev => {
+            // Merge players: Prefer the version with more games played to avoid overwriting local stats with empty cloud data
+            const mergedPlayers = [...prev.players];
+            
+            (players || []).forEach(sp => {
+                const localIdx = mergedPlayers.findIndex(p => p.id === sp.id);
+                if (localIdx === -1) {
+                    mergedPlayers.push(sp);
+                } else {
+                    const localPlayer = mergedPlayers[localIdx];
+                    const spGames = sp.gamesPlayed || sp.games_played || 0;
+                    const localGames = localPlayer.gamesPlayed || (localPlayer.stats?.wins || 0) + (localPlayer.stats?.losses || 0);
                     
-                    // If no games and not in active league, it's likely an "extra" name
-                    const isInActiveLeague = league?.players?.some((p: any) => String(p.id) === String(current.id));
-                    
-                    if (currentGames === 0 && league && !isInActiveLeague) {
-                        return acc;
+                    // If Supabase has more or equal games, or if local is empty, use Supabase
+                    if (spGames >= localGames) {
+                        mergedPlayers[localIdx] = sp;
                     }
-
-                    if (!existing) {
-                        acc.push(current);
-                    } else {
-                        // If duplicate name, keep the one with more games/stats
-                        const existingGames = existing.gamesPlayed || (existing.stats?.wins || 0) + (existing.stats?.losses || 0);
-                        if (currentGames > existingGames) {
-                            const idx = acc.indexOf(existing);
-                            acc[idx] = current;
-                        }
-                    }
-                    return acc;
-                }, []);
-
-                // Merge past leagues
-                const mergedPastLeagues = [...(prev.pastLeagues || [])];
-                (pastLeagues || []).forEach(sl => {
-                    const localIdx = mergedPastLeagues.findIndex(l => l.id === sl.id);
-                    if (localIdx === -1) {
-                        mergedPastLeagues.push(sl);
-                    } else {
-                        // Prefer Supabase if it has more data (e.g. finalStandings)
-                        const spData = sl.finalStandings?.length || 0;
-                        const localData = mergedPastLeagues[localIdx].finalStandings?.length || 0;
-                        if (spData >= localData) {
-                            mergedPastLeagues[localIdx] = sl;
-                        }
-                    }
-                });
-
-                const newState = {
-                    ...prev,
-                    players: cleanedPlayers,
-                    activeLeague: league || prev.activeLeague,
-                    pastLeagues: mergedPastLeagues.sort((a, b) => 
-                        new Date(b.createdAt || b.created_at || 0).getTime() - 
-                        new Date(a.createdAt || a.created_at || 0).getTime()
-                    )
-                };
-                console.log("🔄 STATE HYDRATED:", newState.players.length, "players,", newState.pastLeagues.length, "past leagues");
-                return newState;
+                }
             });
 
-            setSyncStatus('synced');
-        } catch (e) {
-            console.error("Saga Boot Error:", e);
-            setSyncStatus('offline');
-        } finally {
-            setIsLeagueLoading(false);
-        }
-    };
+            // --- CLEANUP: Deduplicate by name and remove empty "extra" players ---
+            const cleanedPlayers = mergedPlayers.reduce((acc: Player[], current) => {
+                const normalizedName = current.name?.toLowerCase().trim() || "";
+                if (!normalizedName) return acc;
 
-    bootSequence();
+                const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName);
+                
+                // Calculate total games across all possible stat fields
+                const currentGames = (current.gamesPlayed || 0) + 
+                                   (current.wins || 0) + 
+                                   (current.losses || 0) +
+                                   (current.stats?.wins || 0) + 
+                                   (current.stats?.losses || 0);
+                
+                // Check if player is in ANY active or past league
+                const isInActiveLeague = league?.players?.some((p: any) => String(p.id) === String(current.id));
+                const isInPastLeagues = (pastLeagues || []).some(pl => 
+                    pl.players?.some((p: any) => String(p.id) === String(current.id)) ||
+                    pl.finalStandings?.some((s: any) => String(s.playerId) === String(current.id))
+                );
+                
+                // If no games and not in any league (active or past), it's an "extra" name
+                if (currentGames === 0 && !isInActiveLeague && !isInPastLeagues) {
+                    return acc;
+                }
+
+                if (!existing) {
+                    acc.push(current);
+                } else {
+                    // If duplicate name, keep the one with more games/stats or the one in the active league
+                    const existingGames = (existing.gamesPlayed || 0) + 
+                                        (existing.wins || 0) + 
+                                        (existing.losses || 0) +
+                                        (existing.stats?.wins || 0) + 
+                                        (existing.stats?.losses || 0);
+                    
+                    const existingInActive = league?.players?.some((p: any) => String(p.id) === String(existing.id));
+                    
+                    if (currentGames > existingGames || (isInActiveLeague && !existingInActive)) {
+                        const idx = acc.indexOf(existing);
+                        acc[idx] = current;
+                    }
+                }
+                return acc;
+            }, []);
+
+            // Merge past leagues
+            const mergedPastLeagues = [...(prev.pastLeagues || [])];
+            (pastLeagues || []).forEach(sl => {
+                const localIdx = mergedPastLeagues.findIndex(l => l.id === sl.id);
+                if (localIdx === -1) {
+                    mergedPastLeagues.push(sl);
+                } else {
+                    // Prefer Supabase if it has more data (e.g. finalStandings)
+                    const spData = sl.finalStandings?.length || 0;
+                    const localData = mergedPastLeagues[localIdx].finalStandings?.length || 0;
+                    if (spData >= localData) {
+                        mergedPastLeagues[localIdx] = sl;
+                    }
+                }
+            });
+
+            const newState = {
+                ...prev,
+                players: cleanedPlayers,
+                activeLeague: league || prev.activeLeague,
+                pastLeagues: mergedPastLeagues.sort((a, b) => 
+                    new Date(b.createdAt || b.created_at || 0).getTime() - 
+                    new Date(a.createdAt || a.created_at || 0).getTime()
+                )
+            };
+            console.log("🔄 STATE HYDRATED:", newState.players.length, "players,", newState.pastLeagues.length, "past leagues");
+            return newState;
+        });
+
+        setSyncStatus('synced');
+    } catch (e) {
+        console.error(`Saga Boot Error (Attempt ${retryCount + 1}):`, e);
+        if (retryCount < 2) {
+            // Retry after 3 seconds
+            setTimeout(() => bootSequence(retryCount + 1), 3000);
+        } else {
+            setSyncStatus('offline');
+        }
+    } finally {
+        setIsLeagueLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    bootSequence();
+  }, [bootSequence]);
 
   // --- REMOVED LEGACY HEARTBEAT ---
 
@@ -830,6 +853,7 @@ const App: React.FC = () => {
         onAppStateRestore={handleRestoreState}
         onHardReset={handleHardReset}
         syncStatus={syncStatus}
+        onRetrySync={bootSequence}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
         actions={

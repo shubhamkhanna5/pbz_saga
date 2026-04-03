@@ -121,13 +121,6 @@ const MatchActionModal: React.FC<MatchActionModalProps> = ({
                        <div className="flex justify-between items-center">
                            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Status: {match.status.toUpperCase()}</h3>
                            <div className="flex gap-2">
-                               <button 
-                                    onClick={handleExport}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 text-aura-purple text-[9px] font-bold uppercase tracking-widest hover:bg-zinc-700 transition-colors min-h-[36px]"
-                                    title="Export Highlight JSON"
-                               >
-                                   <IconDownload size={12} /> REELS {highlightCount > 0 && `(${highlightCount})`}
-                               </button>
                                {isResolvableByAdmin && onUndoNoShow && (
                                    <button 
                                         onClick={onUndoNoShow}
