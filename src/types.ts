@@ -139,6 +139,10 @@ export interface LeagueMatch {
   isAdminOverride?: boolean;
   overrideReason?: string;
   overriddenAt?: number;
+
+  // Pod Saga Metadata
+  podId?: string;
+  cycleIndex?: number;
 }
 
 export interface LeagueDayConfig {

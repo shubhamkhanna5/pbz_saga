@@ -25,10 +25,13 @@ export const isValidScore = (scoreA: number, scoreB: number): boolean => {
   // 2. Hard Cap Check: No one can exceed 15
   if (scoreA > max || scoreB > max) return false;
 
-  // 3. One side MUST hit exactly 15
+  // 3. Special Case: 0-0 is allowed for "Skipped/Timed Out" matches
+  if (scoreA === 0 && scoreB === 0) return true;
+
+  // 4. One side MUST hit exactly 15
   if (scoreA !== max && scoreB !== max) return false;
 
-  // 4. No ties allowed
+  // 5. No ties allowed (except 0-0)
   if (scoreA === scoreB) return false;
 
   // Logic verification:

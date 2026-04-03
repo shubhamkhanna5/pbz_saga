@@ -87,8 +87,8 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
   };
 
   const valid = isValidScore(scoreA, scoreB);
-  const isBagel = (scoreA === 11 && scoreB === 0) || (scoreB === 11 && scoreA === 0);
-  const isGoldenPoint = (scoreA === 11 && scoreB === 10) || (scoreB === 11 && scoreA === 10);
+  const isBagel = (scoreA === 15 && scoreB === 0) || (scoreB === 15 && scoreA === 0);
+  const isGoldenPoint = (scoreA === 15 && scoreB === 14) || (scoreB === 15 && scoreA === 14);
   const highlightCount = game.highlights?.length || 0;
 
   return (
@@ -127,105 +127,89 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
         </div>
 
         <div className="p-6 sm:p-10 space-y-8 relative z-10">
-          {/* Team A - Goku Energy */}
-          <motion.div 
-            layout
-            className="p-6 sm:p-8 rounded-[2.5rem] bg-surface-variant/10 border-2 border-outline/5 relative overflow-hidden group/teamA"
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[60px] rounded-full -translate-y-16 translate-x-16 group-hover/teamA:bg-primary/10 transition-colors"></div>
-            
-            <div className="flex flex-col gap-6 relative z-10">
-              <div className="text-center">
-                <span className="block text-[10px] font-black text-primary/60 uppercase tracking-[0.4em] mb-2 manga-skew">
-                  <span className="manga-skew-reverse block">TEAM ALPHA</span>
-                </span>
-                <h3 className={`text-2xl sm:text-3xl font-headline font-black italic transform -skew-x-12 leading-tight px-4 ${scoreA === 11 ? 'text-primary drop-shadow-[0_0_15px_rgba(255,140,0,0.4)]' : 'text-on-surface'}`}>
-                    {teamANames}
-                </h3>
+          {/* Main Scoreboard Area */}
+          <div className="flex flex-col gap-8">
+            {/* Team Alpha */}
+            <div className="relative">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <span className="block text-[10px] font-black text-primary/60 uppercase tracking-[0.4em] mb-1 manga-skew">
+                    <span className="manga-skew-reverse block">TEAM ALPHA</span>
+                  </span>
+                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreA === 11 ? 'text-primary' : 'text-on-surface'}`}>
+                      {teamANames}
+                  </h3>
+                </div>
+                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreA === 11 ? 'text-primary animate-pulse' : 'text-on-surface'}`}>
+                  {scoreA}
+                </div>
               </div>
               
-              <div className="flex items-center justify-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-3">
                 <motion.button 
-                  whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => decrement(setScoreA, scoreA, true)}
-                  className="w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center rounded-2xl bg-surface border-2 border-outline/10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-all shadow-lg"
+                  className="flex-1 h-14 rounded-2xl bg-surface-variant/20 border-2 border-outline/5 text-on-surface-variant flex items-center justify-center hover:bg-surface-variant/40 transition-all"
                 >
-                  <IconMinus size={24} />
+                  <IconMinus size={20} />
                 </motion.button>
-                
-                <div className={`w-20 sm:w-24 text-center transition-all duration-500 ${flashA ? 'scale-125' : ''}`}>
-                    <span className={`text-6xl sm:text-7xl font-headline font-black italic transform -skew-x-12 block ${scoreA === 11 ? 'text-primary drop-shadow-[0_0_20px_rgba(255,140,0,0.6)] animate-bounce' : 'text-on-surface'}`}>
-                        {scoreA}
-                    </span>
-                </div>
-                
                 <motion.button 
-                  whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => increment(setScoreA, scoreA, true)}
-                  className={`w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center rounded-2xl transition-all shadow-xl border-2
-                      ${scoreA === 11 ? 'bg-surface-variant/20 border-outline/5 text-on-surface-variant/40' : 'bg-primary text-on-primary border-primary/50 shadow-[0_0_20px_rgba(255,140,0,0.3)]'}`}
+                  className={`flex-[2] h-14 rounded-2xl flex items-center justify-center gap-2 transition-all border-2
+                    ${scoreA === 11 ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-primary/20 border-primary/30 text-primary shadow-[0_0_15px_rgba(255,140,0,0.1)] hover:bg-primary/30'}`}
                 >
-                  <IconPlus size={24} />
+                  <IconPlus size={20} />
+                  <span className="font-black italic uppercase tracking-widest text-xs">Point</span>
                 </motion.button>
               </div>
             </div>
-          </motion.div>
 
-          <div className="flex items-center justify-center gap-6 py-0">
-              <div className="h-0.5 flex-1 bg-gradient-to-r from-transparent via-outline/10 to-transparent"></div>
-              <div className="w-10 h-10 rounded-full bg-surface border-2 border-outline/5 flex items-center justify-center shadow-inner">
-                <IconZap size={20} className="text-outline/20" />
+            {/* VS Divider */}
+            <div className="flex items-center gap-4">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-outline/20 to-transparent"></div>
+              <div className="w-8 h-8 rounded-full border-2 border-outline/10 flex items-center justify-center bg-surface">
+                <span className="text-[10px] font-black italic text-on-surface-variant/40">VS</span>
               </div>
-              <div className="h-0.5 flex-1 bg-gradient-to-l from-transparent via-outline/10 to-transparent"></div>
-          </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent via-outline/20 to-transparent"></div>
+            </div>
 
-          {/* Team B - Vegeta Energy */}
-          <motion.div 
-            layout
-            className="p-6 sm:p-8 rounded-[2.5rem] bg-surface-variant/10 border-2 border-outline/5 relative overflow-hidden group/teamB"
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 blur-[60px] rounded-full -translate-y-16 translate-x-16 group-hover/teamB:bg-secondary/10 transition-colors"></div>
-            
-            <div className="flex flex-col gap-6 relative z-10">
-              <div className="text-center">
-                <span className="block text-[10px] font-black text-secondary/60 uppercase tracking-[0.4em] mb-2 manga-skew">
-                  <span className="manga-skew-reverse block">TEAM BRAVO</span>
-                </span>
-                <h3 className={`text-2xl sm:text-3xl font-headline font-black italic transform -skew-x-12 leading-tight px-4 ${scoreB === 11 ? 'text-secondary drop-shadow-[0_0_15px_rgba(30,64,175,0.4)]' : 'text-on-surface'}`}>
-                    {teamBNames}
-                </h3>
+            {/* Team Bravo */}
+            <div className="relative">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <span className="block text-[10px] font-black text-secondary/60 uppercase tracking-[0.4em] mb-1 manga-skew">
+                    <span className="manga-skew-reverse block">TEAM BRAVO</span>
+                  </span>
+                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreB === 11 ? 'text-secondary' : 'text-on-surface'}`}>
+                      {teamBNames}
+                  </h3>
+                </div>
+                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreB === 11 ? 'text-secondary animate-pulse' : 'text-on-surface'}`}>
+                  {scoreB}
+                </div>
               </div>
               
-              <div className="flex items-center justify-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-3">
                 <motion.button 
-                  whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => decrement(setScoreB, scoreB, false)}
-                  className="w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center rounded-2xl bg-surface border-2 border-outline/10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-all shadow-lg"
+                  className="flex-1 h-14 rounded-2xl bg-surface-variant/20 border-2 border-outline/5 text-on-surface-variant flex items-center justify-center hover:bg-surface-variant/40 transition-all"
                 >
-                  <IconMinus size={24} />
+                  <IconMinus size={20} />
                 </motion.button>
-                
-                <div className={`w-20 sm:w-24 text-center transition-all duration-500 ${flashB ? 'scale-125' : ''}`}>
-                  <span className={`text-6xl sm:text-7xl font-headline font-black italic transform -skew-x-12 block ${scoreB === 11 ? 'text-secondary drop-shadow-[0_0_20px_rgba(30,64,175,0.6)] animate-bounce' : 'text-on-surface'}`}>
-                      {scoreB}
-                  </span>
-                </div>
-                
                 <motion.button 
-                  whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => increment(setScoreB, scoreB, false)}
-                  className={`w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center rounded-2xl transition-all shadow-xl border-2
-                      ${scoreB === 11 ? 'bg-surface-variant/20 border-outline/5 text-on-surface-variant/40' : 'bg-secondary text-on-secondary border-secondary/50 shadow-[0_0_20px_rgba(30,64,175,0.3)]'}`}
+                  className={`flex-[2] h-14 rounded-2xl flex items-center justify-center gap-2 transition-all border-2
+                    ${scoreB === 11 ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-secondary/20 border-secondary/30 text-secondary shadow-[0_0_15px_rgba(30,64,175,0.1)] hover:bg-secondary/30'}`}
                 >
-                  <IconPlus size={24} />
+                  <IconPlus size={20} />
+                  <span className="font-black italic uppercase tracking-widest text-xs">Point</span>
                 </motion.button>
               </div>
             </div>
-          </motion.div>
+          </div>
         </div>
         
         <div className="px-10 py-10 bg-surface/80 border-t-2 border-outline/5 space-y-8 relative z-10">
@@ -259,6 +243,19 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
           </div>
           
           <div className="flex gap-4">
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  vibrate('medium');
+                  onSave(0, 0);
+                }}
+                className="flex-1 h-20 rounded-3xl border-2 border-outline/10 bg-surface-variant/10 text-on-surface-variant/60 hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive flex flex-col items-center justify-center gap-1 transition-all"
+              >
+                <IconX size={20} />
+                <span className="text-[10px] font-black uppercase tracking-widest">SKIP (0-0)</span>
+              </motion.button>
+
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

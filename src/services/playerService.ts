@@ -40,9 +40,6 @@ export async function upsertPlayers(players: any[]) {
       id: p.id,
       name: p.name,
       skill: p.skill,
-      dupr_rating: p.duprRating || null,
-      elo: p.elo || 1200,
-      is_present: p.isPresent ?? true,
       games_played: p.gamesPlayed || 0,
       wins: p.wins || p.stats?.wins || 0,
       losses: p.losses || p.stats?.losses || 0,
@@ -55,8 +52,9 @@ export async function upsertPlayers(players: any[]) {
       badges: p.badges || [],
       stats: {
         ...(p.stats || {}),
-        elo: p.elo,
-        duprRating: p.duprRating,
+        elo: p.elo || 1200,
+        duprRating: p.duprRating || null,
+        isPresent: p.isPresent ?? true,
         joinedAtDay: p.joinedAtDay,
         isMidSeason: p.isMidSeason,
         lastPartnerId: p.lastPartnerId
@@ -69,6 +67,28 @@ export async function upsertPlayers(players: any[]) {
   }
 
   return data
+}
+
+/**
+ * Sync full roster (upsert all and delete missing)
+ */
+export async function syncFullRoster(players: any[]) {
+  // 1. Upsert all current players
+  await upsertPlayers(players);
+  
+  // 2. Delete players from Supabase that are not in this list
+  const currentPlayerIds = players.map(p => p.id);
+  if (currentPlayerIds.length > 0) {
+    const { error } = await supabase
+      .from('players')
+      .delete()
+      .filter('id', 'not.in', `(${currentPlayerIds.join(',')})`);
+    
+    if (error) {
+      console.error('Error during roster cleanup:', error);
+      // We don't throw here to avoid failing the whole sync if cleanup fails
+    }
+  }
 }
 
 /**

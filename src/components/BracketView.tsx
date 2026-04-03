@@ -117,7 +117,11 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
           <div className="flex justify-between items-center mb-5">
              <div className="flex items-center gap-2">
                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest bg-black/50 px-3 py-1 rounded-xl border border-white/5">
-                   COURT {match.courtId} • {match.type} • ROUND {match.round}
+                   {match.podId ? (
+                     `${match.cycleIndex && match.cycleIndex > 0 ? 'SWAPPED ' : ''}${match.podId.toUpperCase()} MATCHES`
+                   ) : (
+                     `COURT ${match.courtId} • ${match.type} • ROUND ${match.round}`
+                   )}
                  </span>
                  {match.isAdminOverride && (
                      <span className="text-[8px] font-black bg-red-900/30 text-red-500 px-2 py-1 rounded border border-red-500/20">
@@ -190,7 +194,7 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
         </div>
         <div className="relative z-10">
            <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter drop-shadow-md">
-             CHAPTER {day.day}: HYBRID CLASH
+             {day.matches[0]?.podId ? 'POD SAGA' : `CHAPTER ${day.day}`}: HYBRID CLASH
            </h3>
            <p className="text-[10px] text-aura-gold font-black uppercase tracking-[0.3em] mt-1 italic">
              WEEK {day.week} • MATCHES {completedCount} / {day.matches.length}

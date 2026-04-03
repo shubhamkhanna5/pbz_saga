@@ -97,8 +97,38 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
 
       const pastLeagues = allLeagues.filter((l: any) => l.status === 'completed');
 
-      // Deduplicate players by id
-      const uniquePlayers = (players || []).filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+      // ⚡ Robust Deduplication and Cleanup (Same as bootSequence)
+      const uniquePlayers = (players || []).reduce((acc: any[], current: any) => {
+          const normalizedName = current.name?.toLowerCase().trim() || "";
+          if (!normalizedName) return acc;
+
+          const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName || p.id === current.id);
+          
+          const currentGames = (current.gamesPlayed || 0) + 
+                             (current.wins || 0) + 
+                             (current.losses || 0) +
+                             (current.stats?.wins || 0) + 
+                             (current.stats?.losses || 0);
+          
+          if (!existing) {
+              acc.push(current);
+          } else {
+              const existingGames = (existing.gamesPlayed || 0) + 
+                                  (existing.wins || 0) + 
+                                  (existing.losses || 0) +
+                                  (existing.stats?.wins || 0) + 
+                                  (existing.stats?.losses || 0);
+              
+              const existingInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(existing.id));
+              const currentInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(current.id));
+              
+              if (currentGames > existingGames || (currentInActive && !existingInActive)) {
+                  const idx = acc.indexOf(existing);
+                  acc[idx] = current;
+              }
+          }
+          return acc;
+      }, []);
 
       // Merge with current state or create new state
       const newState: AppState = {
@@ -148,7 +178,7 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
           const { error: deleteError } = await supabase
             .from('players')
             .delete()
-            .not('id', 'in', currentPlayerIds);
+            .not('id', 'in', `(${currentPlayerIds.join(',')})`);
           
           if (deleteError) {
             console.warn('Roster cleanup warning:', deleteError);

@@ -134,7 +134,9 @@ export async function upsertMatches(matches: any[]) {
       is_forfeit: m.isForfeit || false,
       order_index: m.orderIndex || 0,
       events: m.events || [],
-      highlights: m.highlights || []
+      highlights: m.highlights || [],
+      pod_id: m.podId || null,
+      cycle_index: m.cycleIndex !== undefined ? m.cycleIndex : null
     })), { onConflict: 'id' })
 
   if (error) {

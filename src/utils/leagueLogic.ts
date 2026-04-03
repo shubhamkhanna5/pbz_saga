@@ -12,6 +12,7 @@ import {
 import { generateId } from './storage';
 import { MATCH_CONFIG } from './leagueConfig';
 import { computeLeaguePoints } from './rules';
+import { generatePodSchedule } from './podScheduler';
 
 // ============================================================================
 // TYPES
@@ -666,6 +667,43 @@ export function generateLeagueDay(
     partners: [],
     attendees: playerIds,
     config: { hours, courts: courtCount },
+    debugLog: [],
+  };
+}
+
+export function generatePodLeagueDay(
+  leagueId: string,
+  week: number,
+  day: number,
+  playerIds: string[],
+  cycles: number
+): LeagueDay {
+  const baseSeed = parseInt(leagueId.substring(0, 8), 16) + week * 100 + day;
+  const dayId = generateId();
+  
+  const { matches: rawMatches, cycles: actualCycles } = generatePodSchedule(playerIds, cycles, leagueId);
+  const matches: LeagueMatch[] = rawMatches.map((m, idx) => ({
+    ...m,
+    dayId,
+    isCompleted: false,
+    noShowPlayerIds: [],
+    orderIndex: idx,
+    events: [],
+    highlights: [],
+    courtId: (idx % Math.ceil(playerIds.length / 4)) + 1, // Simple court assignment
+  })) as LeagueMatch[];
+
+  return {
+    id: dayId,
+    week,
+    day,
+    date: Date.now(),
+    seed: baseSeed,
+    status: 'generated',
+    matches,
+    partners: [],
+    attendees: playerIds,
+    config: { hours: actualCycles, courts: Math.ceil(playerIds.length / 4) },
     debugLog: [],
   };
 }

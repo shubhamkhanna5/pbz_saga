@@ -87,7 +87,20 @@ export async function getLeagueMatches(leagueId: string) {
     throw error;
   }
 
-  return data;
+  return (data || []).map((m: any) => ({
+    ...m,
+    leagueId: m.league_id,
+    dayId: m.day_id,
+    courtId: m.court_id,
+    scoreA: m.score_a,
+    scoreB: m.score_b,
+    isCompleted: m.is_completed,
+    noShowPlayerIds: m.no_show_player_ids,
+    isForfeit: m.is_forfeit,
+    orderIndex: m.order_index,
+    podId: m.pod_id,
+    cycleIndex: m.cycle_index
+  }));
 }
 
 /**
@@ -189,9 +202,9 @@ export async function getPlayers() {
     totalPoints: p.points || p.total_points || 0,
     bonusPoints: p.bonus_points || 0,
     noShows: p.no_shows || 0,
-    elo: p.elo || 1200,
-    duprRating: p.dupr_rating || null,
-    isPresent: p.is_present ?? true,
+    elo: p.stats?.elo || 1200,
+    duprRating: p.stats?.duprRating || null,
+    isPresent: p.stats?.isPresent ?? true,
     badges: p.badges || [],
     stats: p.stats || {
       wins: p.wins || 0,

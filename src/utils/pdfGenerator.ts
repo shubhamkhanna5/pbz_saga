@@ -41,7 +41,11 @@ const drawMatchBox = (doc: any, match: LeagueMatch, getPlayerName: (id: string) 
   doc.setTextColor(120);
   const modeLabel = match.type.toUpperCase();
   const statusLabel = match.status === 'walkover' ? ' • WALKOVER' : match.isForfeit ? ' • FORFEIT' : '';
-  doc.text(`COURT ${match.courtId} • ${modeLabel}${statusLabel}`, x + 5, y + 8);
+  const podLabel = match.podId 
+    ? `${match.cycleIndex && match.cycleIndex > 0 ? 'SWAPPED ' : ''}${match.podId.toUpperCase()} MATCHES` 
+    : `COURT ${match.courtId}`;
+  
+  doc.text(`${podLabel} • ${modeLabel}${statusLabel}`, x + 5, y + 8);
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0);
@@ -78,8 +82,9 @@ export const generateMatchDayPDF = (
   const getPlayerName = (id: string) => players.find(p => p.id === id)?.name || 'Unknown';
   let y = 20;
 
-  const dayLabel = `${day.day}`;
-  y = drawDayHeader(doc, leagueName, dayLabel, day.week, y);
+  const dayLabel = `${day.day || 1}`;
+  const week = day.week || 1;
+  y = drawDayHeader(doc, leagueName, dayLabel, week, y);
 
   // Dynamic Stage Detection
   // Determine total stages from the actual generated matches rather than static config

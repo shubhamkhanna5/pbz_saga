@@ -94,6 +94,7 @@ const App: React.FC = () => {
             (players || []).forEach(sp => {
                 const localIdx = mergedPlayers.findIndex(p => p.id === sp.id);
                 if (localIdx === -1) {
+                    // Always add from Supabase if not present locally
                     mergedPlayers.push(sp);
                 } else {
                     const localPlayer = mergedPlayers[localIdx];
@@ -121,18 +122,6 @@ const App: React.FC = () => {
                                    (current.stats?.wins || 0) + 
                                    (current.stats?.losses || 0);
                 
-                // Check if player is in ANY active or past league
-                const isInActiveLeague = league?.players?.some((p: any) => String(p.id) === String(current.id));
-                const isInPastLeagues = (pastLeagues || []).some(pl => 
-                    pl.players?.some((p: any) => String(p.id) === String(current.id)) ||
-                    pl.finalStandings?.some((s: any) => String(s.playerId) === String(current.id))
-                );
-                
-                // If no games and not in any league (active or past), it's an "extra" name
-                if (currentGames === 0 && !isInActiveLeague && !isInPastLeagues) {
-                    return acc;
-                }
-
                 if (!existing) {
                     acc.push(current);
                 } else {
@@ -144,8 +133,9 @@ const App: React.FC = () => {
                                         (existing.stats?.losses || 0);
                     
                     const existingInActive = league?.players?.some((p: any) => String(p.id) === String(existing.id));
+                    const currentInActive = league?.players?.some((p: any) => String(p.id) === String(current.id));
                     
-                    if (currentGames > existingGames || (isInActiveLeague && !existingInActive)) {
+                    if (currentGames > existingGames || (currentInActive && !existingInActive)) {
                         const idx = acc.indexOf(existing);
                         acc[idx] = current;
                     }
@@ -491,21 +481,37 @@ const App: React.FC = () => {
   };
 
   const handleAddPlayer = (p: Player) => {
-      setState(prev => {
-          if (prev.players.some(existing => existing.id === p.id)) {
-              return prev;
-          }
-          return { ...prev, players: [...prev.players, p] };
-      });
+      if (state.players.some(existing => existing.id === p.id)) {
+          return;
+      }
+      if (state.autoSync) {
+          import('./services/playerService').then(({ upsertPlayers }) => {
+              upsertPlayers([p]).catch(err => console.error("❌ Failed to sync new player:", err));
+          });
+      }
+      setState(prev => ({ ...prev, players: [...prev.players, p] }));
   };
 
   const handleRemovePlayer = (id: string) => {
+      if (state.autoSync) {
+          import('./services/playerService').then(({ deletePlayer }) => {
+              deletePlayer(id).catch(err => console.error("❌ Failed to delete player from cloud:", err));
+          });
+      }
       setState(prev => ({ ...prev, players: prev.players.filter(p => p.id !== id) }));
   };
 
   const handleTogglePresence = (id: string, isPresent: boolean) => {
       setState(prev => {
           const players = prev.players.map(p => p.id === id ? { ...p, isPresent } : p);
+          if (prev.autoSync) {
+              const updatedPlayer = players.find(p => p.id === id);
+              if (updatedPlayer) {
+                  import('./services/playerService').then(({ upsertPlayers }) => {
+                      upsertPlayers([updatedPlayer]).catch(err => console.error("❌ Failed to sync presence:", err));
+                  });
+              }
+          }
           return { ...prev, players };
       });
   };
@@ -515,14 +521,18 @@ const App: React.FC = () => {
   };
 
   const handleUpdatePlayers = (updatedPlayers: Player[]) => {
-      setState(prev => {
-          if (prev.autoSync) {
-              upsertPlayers(updatedPlayers).catch(err => {
+      if (state.autoSync) {
+          setSyncStatus('syncing');
+          import('./services/playerService').then(({ syncFullRoster }) => {
+              syncFullRoster(updatedPlayers).then(() => {
+                  setSyncStatus('synced');
+              }).catch(err => {
                   console.error('Failed to sync players to Supabase:', err);
+                  setSyncStatus('error');
               });
-          }
-          return { ...prev, players: updatedPlayers };
-      });
+          });
+      }
+      setState(prev => ({ ...prev, players: updatedPlayers }));
   };
 
   const handleResetStats = () => {
@@ -557,41 +567,51 @@ const App: React.FC = () => {
   const handleUpdateLeague = (league: League | null) => {
       if (!isAdmin) return;
       
-      setState(prev => {
-          const isNewOrNull = !league || (prev.activeLeague && prev.activeLeague.id !== league.id);
-          const prevCompleted = prev.activeLeague && prev.activeLeague.status === 'completed';
-          
-          let nextPastLeagues = [...prev.pastLeagues];
-          if (isNewOrNull && prevCompleted) {
-              if (!nextPastLeagues.some(l => l.id === prev.activeLeague!.id)) {
-                  nextPastLeagues.unshift(prev.activeLeague!);
-              }
+      const isNewOrNull = !league || (state.activeLeague && state.activeLeague.id !== league.id);
+      const prevCompleted = state.activeLeague && state.activeLeague.status === 'completed';
+      
+      let nextPastLeagues = [...state.pastLeagues];
+      if (isNewOrNull && prevCompleted) {
+          if (!nextPastLeagues.some(l => l.id === state.activeLeague!.id)) {
+              nextPastLeagues.unshift(state.activeLeague!);
           }
-          
-          // Sync to Supabase if league is not null and autoSync is enabled
-          if (league && prev.autoSync) {
-              upsertLeagues([league]).catch(err => {
-                  console.error('Failed to sync league to Supabase:', err);
-                  setSyncStatus('error');
-              });
+      }
+      
+      // Sync to Supabase if league is not null and autoSync is enabled
+      if (league && state.autoSync) {
+          setSyncStatus('syncing');
+          const syncLeagueData = async () => {
+              try {
+                  // 1. Sync the league itself
+                  await upsertLeagues([league]);
 
-              // Extract and sync matches for scalability
-              const allMatches = (league.days || []).flatMap(day => 
-                (day.matches || []).map(m => ({ ...m, leagueId: league.id, dayId: day.id }))
-              );
-              if (allMatches.length > 0) {
-                upsertMatches(allMatches).catch(err => {
-                  console.error('Failed to sync matches to Supabase:', err);
-                });
+                  // 2. Also sync players to ensure roster stats are updated in cloud
+                  const { syncFullRoster } = await import('./services/playerService');
+                  await syncFullRoster(state.players);
+
+                  // 3. Extract and sync matches for scalability
+                  const allMatches = (league.days || []).flatMap(day => 
+                    (day.matches || []).map(m => ({ ...m, leagueId: league.id, dayId: day.id }))
+                  );
+                  if (allMatches.length > 0) {
+                    await upsertMatches(allMatches);
+                  }
+                  
+                  setSyncStatus('synced');
+                  console.log("✅ League and matches synced to Supabase");
+              } catch (err) {
+                  console.error("❌ Failed to sync league update:", err);
+                  setSyncStatus('error');
               }
-          }
-          
-          return {
-              ...prev,
-              activeLeague: league,
-              pastLeagues: nextPastLeagues
           };
-      });
+          syncLeagueData();
+      }
+      
+      setState(prev => ({
+          ...prev,
+          activeLeague: league,
+          pastLeagues: nextPastLeagues
+      }));
   };
 
   const handleLeagueNoShow = (matchId: string, playerId: string) => {
@@ -611,8 +631,25 @@ const App: React.FC = () => {
       g => g.leagueMatchId === matchId || g.id === matchId
     );
 
+    // Update player stats for no-show
+    const nextPlayers = state.players.map(p => {
+        if (p.id === playerId) {
+            const currentNoShows = p.noShows || p.stats?.noShows || 0;
+            return {
+                ...p,
+                noShows: currentNoShows + 1,
+                stats: {
+                    ...(p.stats || {}),
+                    noShows: currentNoShows + 1
+                }
+            };
+        }
+        return p;
+    });
+
     let nextState: AppState = {
       ...state,
+      players: nextPlayers,
       activeLeague: updatedLeague
     };
 
@@ -624,9 +661,30 @@ const App: React.FC = () => {
 
     // Sync to Supabase
     if (state.autoSync) {
-        upsertLeagues([updatedLeague]).catch(err => {
-            console.error("❌ Failed to sync league after no-show:", err);
-        });
+        setSyncStatus('syncing');
+        const syncSaga = async () => {
+            try {
+                // 1. Sync the updated league
+                await upsertLeagues([nextState.activeLeague!]);
+                
+                // 2. Sync the specific match
+                const updatedMatch = nextState.activeLeague!.days.flatMap(d => d.matches).find(m => m.id === matchId);
+                if (updatedMatch && dayId) {
+                    await upsertMatches([{ ...updatedMatch, leagueId: nextState.activeLeague!.id, dayId }]);
+                }
+
+                // 3. Sync players to ensure no-show count is updated in cloud
+                const { syncFullRoster } = await import('./services/playerService');
+                await syncFullRoster(nextState.players);
+                
+                setSyncStatus('synced');
+                console.log("✅ No-show and League state synced to Supabase");
+            } catch (err) {
+                console.error("❌ Supabase sync failed after no-show:", err);
+                setSyncStatus('error');
+            }
+        };
+        syncSaga();
     }
   };
 
@@ -652,58 +710,6 @@ const App: React.FC = () => {
       const wasCompleted = match.isCompleted;
 
       matches[matchIndex] = finalizePlayedMatch(match, sA, sB);
-      
-      // SYNC TO SUPABASE
-      const syncToSupabase = async () => {
-          try {
-              // 1. Sync individual match record (for leaderboard views)
-              if (match.type === 'singles') {
-                  const p1 = state.players.find(p => p.id === match.teamA[0]);
-                  const p2 = state.players.find(p => p.id === match.teamB[0]);
-                  if (p1 && p2) {
-                      const isWinnerA = sA > sB;
-                      await addSinglesMatch({
-                          winner: isWinnerA ? p1.name : p2.name,
-                          loser: isWinnerA ? p2.name : p1.name,
-                          winnerScore: isWinnerA ? sA : sB,
-                          loserScore: isWinnerA ? sB : sA,
-                          context: 'league'
-                      });
-                  }
-              } else {
-                  const p1 = state.players.find(p => p.id === match.teamA[0]);
-                  const p2 = state.players.find(p => p.id === match.teamA[1]);
-                  const p3 = state.players.find(p => p.id === match.teamB[0]);
-                  const p4 = state.players.find(p => p.id === match.teamB[1]);
-                  if (p1 && p2 && p3 && p4) {
-                      await addDoublesMatch({
-                          team1Player1: p1.name,
-                          team1Player2: p2.name,
-                          team2Player1: p3.name,
-                          team2Player2: p4.name,
-                          winningTeam: sA > sB ? 1 : 2,
-                          team1Score: sA,
-                          team2Score: sB,
-                          context: 'league'
-                      });
-                  }
-              }
-
-              // 2. Sync the entire league state (to preserve the match score in the league days/matches JSONB)
-              if (state.autoSync) {
-                  await upsertLeagues([nextLeague]);
-              }
-
-              console.log("✅ Match and League state synced to Supabase");
-          } catch (err) {
-              console.error("❌ Supabase sync failed:", err);
-          }
-      };
-
-      if (!wasCompleted) {
-          syncToSupabase();
-      }
-
       day.matches = matches;
       days[dayIndex] = day;
       nextLeague.days = days;
@@ -725,6 +731,34 @@ const App: React.FC = () => {
           activeLeague: nextLeague,
           players: nextPlayers 
       };
+
+      // SYNC TO SUPABASE
+      const syncToSupabase = async () => {
+          if (!state.autoSync) return;
+          
+          try {
+              setSyncStatus('syncing');
+              // 1. Sync individual match record (for leaderboard and cross-device views)
+              await upsertMatches([{ ...matches[matchIndex], leagueId: nextLeague.id, dayId: day.id }]);
+
+              // 2. Sync the entire league state (to preserve the match score in the league days/matches JSONB)
+              await upsertLeagues([nextLeague]);
+              
+              // 3. Sync the updated players (to preserve stats like wins/losses/points)
+              const { syncFullRoster } = await import('./services/playerService');
+              await syncFullRoster(nextPlayers);
+              
+              setSyncStatus('synced');
+              console.log("✅ Match and League state synced to Supabase");
+          } catch (err) {
+              console.error("❌ Supabase sync failed:", err);
+              setSyncStatus('error');
+          }
+      };
+
+      if (!wasCompleted) {
+          syncToSupabase();
+      }
 
       setState(nextState);
   };

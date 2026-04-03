@@ -1,5 +1,7 @@
 
 import { AppState, League, LeagueDay } from '../types';
+import { upsertLeagues } from '../services/leagueService';
+import { upsertMatches } from '../services/matchService';
 
 // ============================================================================
 // PBZ DAY EXPORT + CLOUD SYNC (UNIFIED)
@@ -29,19 +31,37 @@ export async function exportAndSyncDay(
     const day = saga.days.find(d => d.id === dayId);
     if (!day) throw new Error("Day not found");
 
-    const payload = buildPayload(saga, day);
+    // 1️⃣ Sync to Cloud (Supabase)
+    console.log("☁️ Syncing to Supabase...");
+    
+    // Sync the league state
+    await upsertLeagues([saga]);
 
-    // 1️⃣ Download locally
+    // Sync the matches for this specific day
+    const dayMatches = (day.matches || []).map(m => ({
+        ...m,
+        leagueId: saga!.id,
+        dayId: day.id
+    }));
+    
+    if (dayMatches.length > 0) {
+        await upsertMatches(dayMatches);
+    }
+
+    // 2️⃣ Download locally (Backup)
+    const payload = buildPayload(saga, day);
     downloadJSON(payload, buildFilename(saga, day));
 
-    console.log("✅ PBZ Day Exported locally");
+    console.log("✅ PBZ Day Exported locally and synced to Cloud");
 
     return payload;
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("❌ Export + Sync failed:", err);
-    if (onError) onError("Export Failed. Check console for details.");
-    else alert("Export Failed. Check console for details.");
+    const msg = err.message || "Export Failed";
+    if (onError) onError(msg);
+    else alert(`Export + Sync failed: ${msg}`);
+    throw err;
   }
 }
 

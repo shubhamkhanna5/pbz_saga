@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDialog } from './ui/DialogProvider';
 import { AppState, League, LeagueDay, Player, LeagueMatch } from '../types';
-import { generateLeagueDay, calculateLeagueStandings, undoLastNoShow, buildSagaHistory, rebalanceAfterDropout, isLeagueDayComplete, adminOverrideScore, finalizePlayedMatch, applyNoShow, deleteLeagueDay } from '../utils/leagueLogic';
+import { generateLeagueDay, generatePodLeagueDay, calculateLeagueStandings, undoLastNoShow, buildSagaHistory, rebalanceAfterDropout, isLeagueDayComplete, adminOverrideScore, finalizePlayedMatch, applyNoShow, deleteLeagueDay } from '../utils/leagueLogic';
 import { generateMatchDayPDF, generateLeagueGloryPDF } from '../utils/pdfGenerator';
-import { IconTrophy, IconPlus, IconCheck, IconPlay, IconClock, IconUsers, IconAlert, IconZap, IconSettings, IconMinus, IconBrain, IconLock, IconUserPlus, IconTrash, IconCalendar } from './ui/Icons';
+import { IconTrophy, IconPlus, IconCheck, IconPlay, IconClock, IconUsers, IconAlert, IconZap, IconSettings, IconMinus, IconBrain, IconLock, IconUserPlus, IconTrash, IconCalendar, IconDownload } from './ui/Icons';
 import { vibrate, computeProfileBadges } from '../utils/godMode';
 import { awardBadge } from '../utils/badges';
 import { generateId } from '../utils/storage';
@@ -246,6 +246,51 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
     onUpdateLeague(updatedLeague);
     setSelectedDayId(newDay.id);
     vibrate('medium');
+
+    // ⚡ Auto-Sync to Cloud
+    if (state.autoSync) {
+        console.log("⚡ Auto-Syncing new Saga to Cloud...");
+        // Use a temporary state object because state.activeLeague is stale until next render
+        const tempState = { ...state, activeLeague: updatedLeague };
+        exportAndSyncDay(tempState, activeLeague.id, newDay.id, () => {});
+    }
+  };
+
+  const handleGeneratePodDay = () => {
+    if (!activeLeague) return;
+    vibrate('medium');
+
+    const daysPerWeek = activeLeague.daysPerWeek || 2; // Fallback to 2 if not set
+    const week = Math.ceil((activeLeague.days.length + 1) / daysPerWeek);
+    const dayNum = ((activeLeague.days.length) % daysPerWeek) + 1;
+
+    // For Pod Saga, we now auto-scale to ensure full coverage (everyone plays everyone/with everyone)
+    const cycles = 0; // 0 triggers auto-scale in generatePodSchedule
+
+    const newDay = generatePodLeagueDay(
+      activeLeague.id,
+      week,
+      dayNum,
+      Array.from(attendees),
+      cycles
+    );
+
+    generateMatchDayPDF(activeLeague.name, newDay, state.players);
+
+    const updatedLeague = {
+      ...activeLeague,
+      days: [...(activeLeague.days || []), newDay]
+    };
+    onUpdateLeague(updatedLeague);
+    setSelectedDayId(newDay.id);
+    vibrate('medium');
+
+    // ⚡ Auto-Sync to Cloud
+    if (state.autoSync) {
+        console.log("⚡ Auto-Syncing new Pod Saga to Cloud...");
+        const tempState = { ...state, activeLeague: updatedLeague };
+        exportAndSyncDay(tempState, activeLeague.id, newDay.id, () => {});
+    }
   };
 
   const handleScoreClick = (dayId: string, matchId: string) => {
@@ -833,14 +878,47 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                                      ))}
                                 </div>
 
-                                <button 
-                                    onClick={handleGenerateDay}
-                                    disabled={attendees.size < 4}
-                                    className="w-full py-6 bg-primary text-on-primary font-headline font-black italic uppercase tracking-[0.2em] rounded-2xl shadow-2xl shadow-primary/30 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale relative z-10 manga-skew group overflow-hidden"
-                                >
-                                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                    <span className="manga-skew-reverse block text-lg">GENERATE TODAY'S MATCHES</span>
-                                </button>
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <button 
+                                        onClick={handleGenerateDay}
+                                        disabled={attendees.size < 4}
+                                        className="flex-[2] py-6 bg-primary text-on-primary font-headline font-black italic uppercase tracking-[0.2em] rounded-2xl shadow-2xl shadow-primary/30 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale relative z-10 manga-skew group overflow-hidden"
+                                    >
+                                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                        <span className="manga-skew-reverse block text-lg">GENERATE TODAY'S MATCHES</span>
+                                    </button>
+
+                                    <button 
+                                        onClick={handleGeneratePodDay}
+                                        disabled={attendees.size < 4}
+                                        className="flex-[1] py-6 bg-secondary text-on-secondary font-headline font-black italic uppercase tracking-[0.2em] rounded-2xl shadow-2xl shadow-secondary/30 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale relative z-10 manga-skew group overflow-hidden"
+                                    >
+                                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                        <span className="manga-skew-reverse block text-lg">POD SAGA</span>
+                                    </button>
+
+                                    <button 
+                                        onClick={async () => {
+                                            vibrate('medium');
+                                            try {
+                                                const lastDay = activeLeague.days[activeLeague.days.length - 1];
+                                                if (lastDay) {
+                                                    await exportAndSyncDay(state, activeLeague.id, lastDay.id);
+                                                    showAlert("CLOUD SYNC", "Saga data has been pushed to Supabase and a backup JSON was downloaded.");
+                                                } else {
+                                                    showAlert("NO DATA", "Generate a day first before syncing.");
+                                                }
+                                            } catch (err) {
+                                                console.error("Sync error:", err);
+                                                showAlert("SYNC FAILED", "Could not sync to cloud. Check connection.");
+                                            }
+                                        }}
+                                        className="flex-1 py-6 bg-surface-variant/20 border-2 border-outline/10 text-on-surface-variant font-black italic uppercase tracking-widest rounded-2xl hover:bg-surface-variant/40 transition-all flex items-center justify-center gap-3"
+                                    >
+                                        <IconDownload size={20} />
+                                        <span>Sync Cloud</span>
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="dbz-card bg-surface-variant/20 border-2 border-outline/5 p-8 rounded-[2.5rem] text-center mt-10">
