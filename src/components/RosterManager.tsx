@@ -11,6 +11,7 @@ interface RosterManagerProps {
   onAddPlayer: (player: Player) => void;
   onRemovePlayer: (id: string) => void;
   onUpdatePresence: (id: string, isPresent: boolean) => void;
+  isAdmin?: boolean;
   isDarkMode?: boolean;
 }
 
@@ -19,6 +20,7 @@ const RosterManager: React.FC<RosterManagerProps> = ({
   onAddPlayer, 
   onRemovePlayer, 
   onUpdatePresence,
+  isAdmin,
   isDarkMode
 }) => {
   const { showConfirm } = useDialog();
@@ -170,17 +172,19 @@ const RosterManager: React.FC<RosterManagerProps> = ({
                         </div>
                     </div>
 
-                    <button 
-                        onClick={() => {
-                            vibrate('medium');
-                            showConfirm(`Are you sure you want to remove ${player.name} from the roster? All their stats will be lost.`, () => {
-                                onRemovePlayer(player.id);
-                            });
-                        }}
-                        className="p-3 text-on-surface-variant/40 hover:text-primary transition-colors active:scale-95"
-                    >
-                        <IconTrash size={20} />
-                    </button>
+                    {isAdmin && (
+                        <button 
+                            onClick={() => {
+                                vibrate('medium');
+                                showConfirm(`Are you sure you want to remove ${player.name} from the roster? All their stats will be lost.`, () => {
+                                    onRemovePlayer(player.id);
+                                });
+                            }}
+                            className="p-3 text-on-surface-variant/40 hover:text-primary transition-colors active:scale-95"
+                        >
+                            <IconTrash size={20} />
+                        </button>
+                    )}
                 </div>
             ))}
         </div>

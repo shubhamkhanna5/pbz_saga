@@ -57,6 +57,7 @@ export interface Player {
   joinedAtDay?: number; // Index of the day they joined the current saga (0-based)
   isMidSeason?: boolean;
   elo?: number; // New: Elo Rating System
+  dragonBalls?: number; // New: Dragon Ball count
 }
 
 export interface GameEvent {

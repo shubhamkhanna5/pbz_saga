@@ -16,6 +16,7 @@ interface LeaderboardsManagerProps {
   pastLeagues: League[];
   pastTournaments: Tournament[];
   onResetStats?: () => void;
+  onUpdateDragonBalls?: (playerId: string, delta: number) => void;
   isAdmin?: boolean;
   isDarkMode?: boolean;
 }
@@ -43,6 +44,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
   pastLeagues,
   pastTournaments,
   onResetStats,
+  onUpdateDragonBalls,
   isAdmin,
   isDarkMode
 }) => {
@@ -513,11 +515,24 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
                                     #{idx + 1}
                                 </div>
                                 <div>
-                                    <div className={`text-xl font-headline font-black italic uppercase tracking-tighter transform -skew-x-6 group-hover:text-primary transition-colors ${
+                                    <div className={`text-xl font-headline font-black italic uppercase tracking-tighter transform -skew-x-6 group-hover:text-primary transition-colors flex items-center gap-2 ${
                                         idx === 0 ? 'text-aura-gold' : 'text-on-surface'
                                     }`}>
                                         {(p.name || p.player_name)?.toUpperCase()}
-                                        {idx === 0 && <span className="ml-2">👑</span>}
+                                        {idx === 0 && <span>👑</span>}
+                                        {(() => {
+                                          const player = players.find(pl => pl.id === p.playerId);
+                                          const dbCount = player?.dragonBalls || 0;
+                                          if (dbCount <= 0) return null;
+                                          return (
+                                            <div className="flex items-center gap-0.5 ml-1">
+                                              {[...Array(Math.min(dbCount, 7))].map((_, i) => (
+                                                <span key={i} className="text-sm drop-shadow-[0_0_5px_rgba(255,140,0,0.8)]">🟠</span>
+                                              ))}
+                                              {dbCount > 7 && <span className="text-[10px] font-black text-aura-gold">+{dbCount - 7}</span>}
+                                            </div>
+                                          );
+                                        })()}
                                     </div>
                                     <div className="text-[10px] font-black text-on-surface-variant/40 uppercase mt-0.5 tracking-widest">
                                         {p.games} Games Played • {p.wins} Wins

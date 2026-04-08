@@ -61,11 +61,9 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
 
   // Separate Queue (Pending) from History (Completed)
   const activeQueue = sortedMatches.filter(m => {
-    if (!isAdmin && isCustom(m)) return false;
     return m.status === 'scheduled';
   });
   const history = sortedMatches.filter(m => {
-    if (!isAdmin && isCustom(m)) return false;
     return m.status !== 'scheduled';
   });
 

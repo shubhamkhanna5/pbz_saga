@@ -63,50 +63,63 @@ const App: React.FC = () => {
 
   // --- GLOBAL AUTO-BACKUP EFFECT ---
   // Debounced sync for "everything auto backed up"
+  const performGlobalSync = useCallback(async () => {
+    if (isRestoring || isResettingRef.current) return;
+    
+    setSyncStatus('syncing');
+    try {
+        // 1. Sync Players
+        if (stateRef.current.players.length > 0) {
+            await syncFullRoster(stateRef.current.players);
+        }
+
+        // 2. Sync Active League
+        if (stateRef.current.activeLeague) {
+            await upsertLeagues([stateRef.current.activeLeague]);
+            
+            // Sync matches for the active league
+            const allMatches = (stateRef.current.activeLeague.days || []).flatMap(day => 
+                (day.matches || []).map(m => ({ ...m, leagueId: stateRef.current.activeLeague!.id, dayId: day.id }))
+            );
+            if (allMatches.length > 0) {
+                await upsertMatches(allMatches);
+            }
+        }
+
+        // 3. Sync Session
+        if (stateRef.current.activeSession) {
+            await upsertSession(stateRef.current.activeSession);
+        }
+
+        // 4. Sync Tournament
+        if (stateRef.current.activeTournament) {
+            await upsertTournaments([stateRef.current.activeTournament]);
+        }
+
+        setSyncStatus('synced');
+        console.log("⚡ GLOBAL AUTO-BACKUP COMPLETE");
+    } catch (err) {
+        console.error("❌ Global backup failed:", err);
+        setSyncStatus('error');
+    }
+  }, [isRestoring]);
+
   useEffect(() => {
     if (isRestoring || isResettingRef.current) return;
 
-    const timer = setTimeout(async () => {
-        setSyncStatus('syncing');
-        try {
-            // 1. Sync Players
-            if (state.players.length > 0) {
-                await syncFullRoster(state.players);
-            }
-
-            // 2. Sync Active League
-            if (state.activeLeague) {
-                await upsertLeagues([state.activeLeague]);
-                
-                // Sync matches for the active league
-                const allMatches = (state.activeLeague.days || []).flatMap(day => 
-                    (day.matches || []).map(m => ({ ...m, leagueId: state.activeLeague!.id, dayId: day.id }))
-                );
-                if (allMatches.length > 0) {
-                    await upsertMatches(allMatches);
-                }
-            }
-
-            // 3. Sync Session
-            if (state.activeSession) {
-                await upsertSession(state.activeSession);
-            }
-
-            // 4. Sync Tournament
-            if (state.activeTournament) {
-                await upsertTournaments([state.activeTournament]);
-            }
-
-            setSyncStatus('synced');
-            console.log("⚡ GLOBAL AUTO-BACKUP COMPLETE");
-        } catch (err) {
-            console.error("❌ Global backup failed:", err);
-            setSyncStatus('error');
-        }
-    }, 500); // 500ms debounce
-
+    const timer = setTimeout(performGlobalSync, 1000); // 1s debounce
     return () => clearTimeout(timer);
-  }, [state.players, state.activeLeague, state.activeSession, state.activeTournament, isRestoring]);
+  }, [state.players, state.activeLeague, state.activeSession, state.activeTournament, isRestoring, performGlobalSync]);
+
+  // Network Recovery Listener
+  useEffect(() => {
+    const handleOnline = () => {
+        console.log("🌐 Network back online, triggering sync...");
+        performGlobalSync();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [performGlobalSync]);
 
   // --- SUPABASE-FIRST BOOT SEQUENCE ---
   const bootSequence = useCallback(async (retryCount = 0) => {
@@ -667,6 +680,22 @@ const App: React.FC = () => {
           return { ...prev, players };
       });
   };
+
+  const handleUpdateDragonBalls = (playerId: string, delta: number) => {
+      setState(prev => {
+          const players = prev.players.map(p => 
+              p.id === playerId 
+                  ? { ...p, dragonBalls: Math.max(0, (p.dragonBalls || 0) + delta) } 
+                  : p
+          );
+          const updatedPlayer = players.find(p => p.id === playerId);
+          if (updatedPlayer) {
+              upsertPlayers([updatedPlayer]).catch(err => console.error("❌ Failed to sync dragon balls:", err));
+          }
+          return { ...prev, players };
+      });
+      vibrate('medium');
+  };
   
   const handleUndoGameEnd = () => {
       showAlert("Undo not yet implemented in God Mode engine.");
@@ -959,6 +988,7 @@ const App: React.FC = () => {
             isAdmin={isAdmin}
             onScoreUpdate={handleLiveScoreUpdate}
             onHighlight={handleHighlightTrigger}
+            onUpdateDragonBalls={handleUpdateDragonBalls}
             isDarkMode={isDarkMode}
             showAlert={showAlert}
           />
@@ -971,6 +1001,7 @@ const App: React.FC = () => {
             pastLeagues={state.pastLeagues}
             onResetStats={handleResetStats}
             isAdmin={isAdmin}
+            onUpdateDragonBalls={handleUpdateDragonBalls}
             isDarkMode={isDarkMode}
           />
         );
@@ -981,6 +1012,7 @@ const App: React.FC = () => {
             onAddPlayer={handleAddPlayer}
             onRemovePlayer={handleRemovePlayer}
             onUpdatePresence={handleTogglePresence}
+            isAdmin={isAdmin}
           />
         );
       case 'stats':

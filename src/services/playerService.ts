@@ -49,10 +49,12 @@ export async function upsertPlayers(players: any[]) {
       total_points: p.points || p.totalPoints || p.stats?.totalPoints || 0,
       bonus_points: p.bonusPoints || p.stats?.bonusPoints || 0,
       no_shows: p.noShows || p.stats?.noShows || 0,
+      dragon_balls: p.dragonBalls || 0,
       badges: p.badges || [],
       stats: {
         ...(p.stats || {}),
         elo: p.elo || 1200,
+        dragonBalls: p.dragonBalls || 0,
         duprRating: p.duprRating || null,
         isPresent: p.isPresent ?? true,
         joinedAtDay: p.joinedAtDay,

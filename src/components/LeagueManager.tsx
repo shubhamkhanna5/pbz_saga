@@ -32,10 +32,11 @@ interface LeagueManagerProps {
   isAdmin?: boolean;
   onScoreUpdate?: (gameId: string, sA: number, sB: number) => void;
   onHighlight?: (gameId: string) => void;
+  onUpdateDragonBalls?: (playerId: string, delta: number) => void;
   isDarkMode?: boolean;
 }
 
-const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, onUpdatePlayers, onMatchScore, onNoShow, isAdmin, onScoreUpdate, onHighlight, isDarkMode }) => {
+const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, onUpdatePlayers, onMatchScore, onNoShow, isAdmin, onScoreUpdate, onHighlight, onUpdateDragonBalls, isDarkMode }) => {
   const { showAlert, showConfirm } = useDialog();
   const [setupMode, setSetupMode] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
@@ -1072,10 +1073,14 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                 } as any}
                 teamANames={getNames(scoringMatch.match.teamA)}
                 teamBNames={getNames(scoringMatch.match.teamB)}
+                teamAPlayers={scoringMatch.match.teamA.map(id => state.players.find(p => p.id === id)!)}
+                teamBPlayers={scoringMatch.match.teamB.map(id => state.players.find(p => p.id === id)!)}
                 onSave={handleSaveScore}
                 onCancel={() => setScoringMatch(null)}
                 onScoreChange={(sA, sB) => onScoreUpdate && onScoreUpdate(scoringMatch.match.id, sA, sB)}
                 onHighlight={() => onHighlight && onHighlight(scoringMatch.match.id)} // Pass highlight handler
+                isAdmin={isAdmin}
+                onUpdateDragonBalls={onUpdateDragonBalls}
             />
         )}
 

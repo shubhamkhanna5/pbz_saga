@@ -204,6 +204,7 @@ export async function getPlayers() {
     totalPoints: p.points || p.total_points || 0,
     bonusPoints: p.bonus_points || 0,
     noShows: p.no_shows || 0,
+    dragonBalls: p.dragon_balls || p.stats?.dragonBalls || 0,
     elo: p.stats?.elo || 1200,
     duprRating: p.stats?.duprRating || null,
     isPresent: p.stats?.isPresent ?? true,
