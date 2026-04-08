@@ -266,14 +266,12 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-xs font-black text-on-surface uppercase tracking-wider">Supabase Auto-Sync</p>
-              <p className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest">Toggle automatic cloud updates</p>
+              <p className="text-[10px] text-green-500 font-black uppercase tracking-widest animate-pulse">System Active & Backing Up</p>
             </div>
-            <button 
-              onClick={() => onUpdateAutoSync?.(!appState.autoSync)}
-              className={`w-14 h-8 rounded-full p-1 transition-all duration-300 manga-skew ${appState.autoSync ? 'bg-primary shadow-[0_0_15px_rgba(255,140,0,0.4)]' : 'bg-surface-variant'}`}
-            >
-              <div className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 manga-skew-reverse ${appState.autoSync ? 'translate-x-6' : 'translate-x-0'}`} />
-            </button>
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+              <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Always On</span>
+            </div>
           </div>
         </div>
 

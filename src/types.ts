@@ -12,8 +12,8 @@ export interface ModeStats {
 }
 
 export interface PlayerStats extends ModeStats {
-  clutchWins: number; // 11-10 or comeback wins
-  bagelsGiven: number; // 11-0 wins
+  clutchWins: number; // 15-14 or comeback wins
+  bagelsGiven: number; // 15-0 wins
   totalPoints: number; // All-time points scored
   bonusPoints: number; // New: League Bonus Points
   noShows: number;     // New: Number of no-shows
@@ -61,10 +61,10 @@ export interface Player {
 
 export interface GameEvent {
   id: string;
-  type: 'point';
+  type: 'point' | 'custom_marker';
   timestamp: number;
-  team: 'A' | 'B';
-  scoreAfter: string;
+  team?: 'A' | 'B';
+  scoreAfter?: string;
 }
 
 export interface PBZHighlight {
@@ -143,11 +143,18 @@ export interface LeagueMatch {
   // Pod Saga Metadata
   podId?: string;
   cycleIndex?: number;
+  isCustom?: boolean;
+  timestamp?: number;
 }
 
 export interface LeagueDayConfig {
   hours: number;
   courts: number;
+}
+
+export interface PodComposition {
+  cycleIndex: number;
+  pods: { id: string, players: string[] }[];
 }
 
 export interface LeagueDay {
@@ -164,6 +171,7 @@ export interface LeagueDay {
   config?: LeagueDayConfig; // Persisted generation params for rebalancing
   divisions?: LeagueDay[]; // Recursive structure for split divisions
   debugLog?: SchedulerDebugEntry[]; // For observability
+  podCompositions?: PodComposition[]; // New: Track pod players for PDF reporting
 }
 
 export interface SchedulerDebugEntry {
@@ -228,6 +236,8 @@ export interface TournamentMatch {
   // New Fields for Structured Tournaments
   groupId?: string; 
   bracketRound?: 'quarter' | 'semi' | 'final' | 'third_place';
+  type?: 'singles' | 'doubles';
+  isCustom?: boolean;
   events?: GameEvent[];
   highlights?: PBZHighlight[]; // New: Highlight Reel Markers
 }

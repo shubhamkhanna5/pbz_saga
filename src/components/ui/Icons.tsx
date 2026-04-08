@@ -36,7 +36,8 @@ import {
   Calendar,
   Code,
   AlertTriangle,
-  Copy
+  Copy,
+  Search
 } from 'lucide-react';
 
 export const IconUsers = Users;
@@ -75,3 +76,4 @@ export const IconCalendar = Calendar;
 export const IconCode = Code;
 export const IconAlertTriangle = AlertTriangle;
 export const IconCopy = Copy;
+export const IconSearch = Search;

@@ -1,13 +1,17 @@
 
 import React, { useState, useMemo } from 'react';
 import { useDialog } from './ui/DialogProvider';
-import { AppState, TournamentMatch, Player } from '../types';
+import { AppState, TournamentMatch, Player, Tournament } from '../types';
 import { IconTrophy, IconMinus, IconPlus, IconCheck, IconZap, IconUsers, IconUserPlus, IconDownload, IconPlay, IconSettings, IconX, IconTrash, IconLock, IconActivity } from './ui/Icons';
 import { calculateGroupStandings, createTeams, createGroups, generateGroupMatches } from '../utils/tournamentLogic';
 import { vibrate } from '../utils/godMode';
 import { exportBracketPDF } from '../utils/pdfGenerator';
 import { formatPlayerName } from '../utils/storage';
 import ScoreModal from './ScoreModal';
+import CustomMatchModal from './CustomMatchModal';
+import { AnimatePresence } from 'motion/react';
+import { generateId } from '../utils/storage';
+import { TournamentMatch as TMatch } from '../types';
 
 interface TournamentManagerProps {
   state: AppState;
@@ -15,10 +19,12 @@ interface TournamentManagerProps {
   onEndTournament: () => void;
   onMatchStart: (matchId: string, courtId: number) => void;
   onMatchEnd: (gameId: string, scoreA: number, scoreB: number) => void;
+  onUpdateTournament: (tournament: Tournament) => void;
   onScoreUpdate?: (gameId: string, sA: number, sB: number) => void;
   isAdmin?: boolean;
   onHighlight?: (gameId: string) => void;
   isDarkMode?: boolean;
+  initialTab?: { type: 'standings' | 'matches' | 'bracket', timestamp: number };
 }
 
 const TournamentManager: React.FC<TournamentManagerProps> = ({
@@ -26,10 +32,12 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
   onStartTournament,
   onEndTournament,
   onMatchEnd,
+  onUpdateTournament,
   onScoreUpdate,
   isAdmin,
   onHighlight,
-  isDarkMode
+  isDarkMode,
+  initialTab
 }) => {
   const { showAlert, showConfirm } = useDialog();
   const [setupName, setSetupName] = useState('World Martial Arts Tournament');
@@ -39,14 +47,21 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [manualTeams, setManualTeams] = useState<string[][]>([]);
   const [stagingPlayer, setStagingPlayer] = useState<string|null>(null);
   
-  const [activeTab, setActiveTab] = useState<'standings'|'matches'|'bracket'>('matches');
+  const [activeTab, setActiveTab] = useState<'standings'|'matches'|'bracket'>(initialTab?.type || 'matches');
+  
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab.type);
+    }
+  }, [initialTab]);
   const [scoringMatchId, setScoringMatchId] = useState<string | null>(null);
+  const [showCustomMatchModal, setShowCustomMatchModal] = useState(false);
   
   const [matchType, setMatchType] = useState<'singles'|'doubles'>('singles');
   const [teamMode, setTeamMode] = useState<'random'|'manual'>('random');
 
   const getPlayer = (id: string) => state.players.find(p => p.id === id);
-  const getNames = (ids: string[]) => ids.map(id => getPlayer(id)?.name || 'Unknown').join(' & ');
+  const getNames = (ids: string[]) => ids.map(id => (getPlayer(id)?.name || 'Unknown').toUpperCase()).join(' & ');
 
   const handleManualPlayerClick = (id: string) => {
       if (stagingPlayer === id) {
@@ -93,7 +108,34 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
       vibrate('light');
   };
 
-  const handleStart = () => {
+    const handleSaveCustomMatch = (teamA: string[], teamB: string[], scoreA: number, scoreB: number, type: 'singles' | 'doubles') => {
+        if (!state.activeTournament) return;
+
+        const newMatch: TMatch = {
+            id: generateId(),
+            teamA,
+            teamB,
+            scoreA,
+            scoreB,
+            status: 'completed',
+            round: 99, // Custom round
+            courtId: 1,
+            type,
+            isCustom: true,
+            highlights: []
+        };
+
+        const updatedTournament = {
+            ...state.activeTournament,
+            matches: [...state.activeTournament.matches, newMatch]
+        };
+
+        onUpdateTournament(updatedTournament);
+        setShowCustomMatchModal(false);
+        vibrate('success');
+    };
+
+    const handleStart = () => {
       if (!isAdmin) return;
       if (matchType === 'doubles' && teamMode === 'manual') {
           const flatPlayers = manualTeams.reduce<string[]>((acc, team) => acc.concat(team), [] as string[]);
@@ -423,75 +465,161 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
 
         {activeTab === 'matches' && (
             <div className="grid grid-cols-1 gap-6 animate-in slide-in-from-right duration-700">
-                {sortedMatches.map(m => {
-                    const isComplete = m.status === 'completed';
-                    const tag = m.bracketRound ? m.bracketRound.toUpperCase() : m.groupId ? `GROUP ${m.groupId === 'G1' ? 'A' : 'B'}` : 'MATCH';
-                    
-                    return (
-                        <div 
-                            key={m.id}
-                            onClick={() => {
-                                setScoringMatchId(m.id);
-                                vibrate('light');
-                            }}
-                            className={`
-                                relative p-8 rounded-[3rem] border-2 transition-all duration-500 group/battle overflow-hidden manga-shadow
-                                ${isComplete 
-                                    ? 'bg-surface-variant/5 border-outline/10 opacity-60 grayscale-[0.5]' 
-                                    : 'bg-surface border-primary/20 cursor-pointer shadow-xl hover:border-primary hover:bg-primary/[0.02] hover:scale-[1.01]'
-                                }
-                            `}
-                        >
-                            {!isComplete && (
-                                <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 -translate-y-24 translate-x-24 rounded-full blur-[80px] group-hover:bg-primary/10 transition-colors duration-700"></div>
-                            )}
-                            
-                            <div className="flex justify-between items-center mb-6 relative z-10">
-                                <div className="flex items-center gap-4">
-                                    <span className="text-[10px] font-black text-primary uppercase tracking-[0.4em] bg-primary/10 px-4 py-1.5 rounded-xl border border-primary/20 transform -skew-x-12">
-                                        {tag}
-                                    </span>
-                                    {m.courtId && (
-                                        <span className="text-[10px] font-black text-secondary uppercase tracking-[0.4em] bg-secondary/10 px-4 py-1.5 rounded-xl border border-secondary/20 transform -skew-x-12">
-                                            ARENA {m.courtId}
-                                        </span>
-                                    )}
-                                </div>
-                                {isComplete && (
-                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20 shadow-lg animate-in zoom-in">
-                                        <IconCheck size={20} className="text-primary" />
+                <div className="flex justify-end">
+                     <button 
+                        onClick={() => setShowCustomMatchModal(true)}
+                        className="flex items-center gap-2 text-[10px] font-black text-primary uppercase bg-primary/10 px-4 py-2.5 rounded-2xl border border-primary/20 hover:bg-primary/20 transition-all active:scale-95"
+                     >
+                        <IconPlus size={14} /> Custom Match
+                     </button>
+                </div>
+
+                {/* Custom Matches Section */}
+                {matches.filter(m => m.isCustom).length > 0 && (
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 pl-2">
+                             <div className="w-1.5 h-1.5 rounded-full bg-hype-500"></div>
+                             <h3 className="text-[11px] font-black text-hype-500/60 uppercase tracking-[0.4em]">EXHIBITION BATTLES</h3>
+                        </div>
+                        {matches.filter(m => m.isCustom).map(m => {
+                            const isComplete = m.status === 'completed';
+                            return (
+                                <div 
+                                    key={m.id}
+                                    onClick={() => {
+                                        setScoringMatchId(m.id);
+                                        vibrate('light');
+                                    }}
+                                    className={`
+                                        relative p-8 rounded-[3rem] border-2 transition-all duration-500 group/battle overflow-hidden manga-shadow
+                                        ${isComplete 
+                                            ? 'bg-surface-variant/5 border-hype-500/10 opacity-60 grayscale-[0.5]' 
+                                            : 'bg-surface border-hype-500/20 cursor-pointer shadow-xl hover:border-hype-500 hover:bg-hype-500/[0.02] hover:scale-[1.01]'
+                                        }
+                                    `}
+                                >
+                                    <div className="flex justify-between items-center mb-6 relative z-10">
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[10px] font-black text-hype-500 uppercase tracking-[0.4em] bg-hype-500/10 px-4 py-1.5 rounded-xl border border-hype-500/20 transform -skew-x-12">
+                                                CUSTOM
+                                            </span>
+                                        </div>
+                                        {isComplete && (
+                                            <div className="w-10 h-10 rounded-full bg-hype-500/10 flex items-center justify-center border-2 border-hype-500/20 shadow-lg animate-in zoom-in">
+                                                <IconCheck size={20} className="text-hype-500" />
+                                            </div>
+                                        )}
                                     </div>
+                                    
+                                    <div className="flex flex-col sm:flex-row justify-between items-center gap-8 relative z-10">
+                                        <div className="flex-1 w-full">
+                                            {renderTeamPills(m.teamA, 'left', isComplete && (m.scoreA||0) > (m.scoreB||0))}
+                                        </div>
+                                        
+                                        <div className="shrink-0 flex flex-col items-center gap-3">
+                                            {isComplete ? (
+                                                <div className="bg-surface-variant/20 px-8 py-4 rounded-[2rem] border-2 border-outline/10 text-on-surface font-headline font-black italic text-3xl transform -skew-x-12 shadow-inner">
+                                                    {m.scoreA} <span className="text-hype-500/40 mx-2">-</span> {m.scoreB}
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-4">
+                                                    <div className="text-xs font-black text-on-surface-variant/20 uppercase tracking-[0.5em] italic">VERSUS</div>
+                                                    <div className="group/btn relative px-8 py-3 bg-hype-500 text-white rounded-2xl font-headline font-black italic text-sm uppercase tracking-widest shadow-xl shadow-hype-500/30 transform -skew-x-12 overflow-hidden transition-all hover:scale-110">
+                                                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-500"></div>
+                                                        <span className="relative z-10 skew-x-12 block">RECORD BATTLE</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex-1 w-full">
+                                            {renderTeamPills(m.teamB, 'right', isComplete && (m.scoreB||0) > (m.scoreA||0))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Regular Matches Section */}
+                <div className="space-y-6">
+                    {matches.filter(m => m.isCustom).length > 0 && (
+                        <div className="flex items-center gap-3 pl-2 mt-4">
+                             <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                             <h3 className="text-[11px] font-black text-on-surface-variant/40 uppercase tracking-[0.4em]">SAGA BATTLES</h3>
+                        </div>
+                    )}
+                    {sortedMatches.filter(m => !m.isCustom).map(m => {
+                        const isComplete = m.status === 'completed';
+                        const tag = m.bracketRound ? m.bracketRound.toUpperCase() : m.groupId ? `GROUP ${m.groupId === 'G1' ? 'A' : 'B'}` : 'MATCH';
+                        
+                        return (
+                            <div 
+                                key={m.id}
+                                onClick={() => {
+                                    setScoringMatchId(m.id);
+                                    vibrate('light');
+                                }}
+                                className={`
+                                    relative p-8 rounded-[3rem] border-2 transition-all duration-500 group/battle overflow-hidden manga-shadow
+                                    ${isComplete 
+                                        ? 'bg-surface-variant/5 border-outline/10 opacity-60 grayscale-[0.5]' 
+                                        : 'bg-surface border-primary/20 cursor-pointer shadow-xl hover:border-primary hover:bg-primary/[0.02] hover:scale-[1.01]'
+                                    }
+                                `}
+                            >
+                                {!isComplete && (
+                                    <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 -translate-y-24 translate-x-24 rounded-full blur-[80px] group-hover:bg-primary/10 transition-colors duration-700"></div>
                                 )}
-                            </div>
-                            
-                            <div className="flex flex-col sm:flex-row justify-between items-center gap-8 relative z-10">
-                                <div className="flex-1 w-full">
-                                    {renderTeamPills(m.teamA, 'left', isComplete && (m.scoreA||0) > (m.scoreB||0))}
+                                
+                                <div className="flex justify-between items-center mb-6 relative z-10">
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-[10px] font-black text-primary uppercase tracking-[0.4em] bg-primary/10 px-4 py-1.5 rounded-xl border border-primary/20 transform -skew-x-12">
+                                            {tag}
+                                        </span>
+                                        {m.courtId && (
+                                            <span className="text-[10px] font-black text-secondary uppercase tracking-[0.4em] bg-secondary/10 px-4 py-1.5 rounded-xl border border-secondary/20 transform -skew-x-12">
+                                                ARENA {m.courtId}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {isComplete && (
+                                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20 shadow-lg animate-in zoom-in">
+                                            <IconCheck size={20} className="text-primary" />
+                                        </div>
+                                    )}
                                 </div>
                                 
-                                <div className="shrink-0 flex flex-col items-center gap-3">
-                                    {isComplete ? (
-                                        <div className="bg-surface-variant/20 px-8 py-4 rounded-[2rem] border-2 border-outline/10 text-on-surface font-headline font-black italic text-3xl transform -skew-x-12 shadow-inner">
-                                            {m.scoreA} <span className="text-primary/40 mx-2">-</span> {m.scoreB}
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center gap-4">
-                                            <div className="text-xs font-black text-on-surface-variant/20 uppercase tracking-[0.5em] italic">VERSUS</div>
-                                            <div className="group/btn relative px-8 py-3 bg-primary text-on-primary rounded-2xl font-headline font-black italic text-sm uppercase tracking-widest shadow-xl shadow-primary/30 transform -skew-x-12 overflow-hidden transition-all hover:scale-110">
-                                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-500"></div>
-                                                <span className="relative z-10 skew-x-12 block">RECORD BATTLE</span>
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-8 relative z-10">
+                                    <div className="flex-1 w-full">
+                                        {renderTeamPills(m.teamA, 'left', isComplete && (m.scoreA||0) > (m.scoreB||0))}
+                                    </div>
+                                    
+                                    <div className="shrink-0 flex flex-col items-center gap-3">
+                                        {isComplete ? (
+                                            <div className="bg-surface-variant/20 px-8 py-4 rounded-[2rem] border-2 border-outline/10 text-on-surface font-headline font-black italic text-3xl transform -skew-x-12 shadow-inner">
+                                                {m.scoreA} <span className="text-primary/40 mx-2">-</span> {m.scoreB}
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-4">
+                                                <div className="text-xs font-black text-on-surface-variant/20 uppercase tracking-[0.5em] italic">VERSUS</div>
+                                                <div className="group/btn relative px-8 py-3 bg-primary text-on-primary rounded-2xl font-headline font-black italic text-sm uppercase tracking-widest shadow-xl shadow-primary/30 transform -skew-x-12 overflow-hidden transition-all hover:scale-110">
+                                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-500"></div>
+                                                    <span className="relative z-10 skew-x-12 block">RECORD BATTLE</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
 
-                                <div className="flex-1 w-full">
-                                    {renderTeamPills(m.teamB, 'right', isComplete && (m.scoreB||0) > (m.scoreA||0))}
+                                    <div className="flex-1 w-full">
+                                        {renderTeamPills(m.teamB, 'right', isComplete && (m.scoreB||0) > (m.scoreA||0))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
             </div>
         )}
 
@@ -543,13 +671,50 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
 
         {activeTab === 'bracket' && (
             <div className="space-y-8 animate-in slide-in-from-right duration-500">
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-4">
+                     <button 
+                        onClick={() => setShowCustomMatchModal(true)}
+                        className="flex items-center gap-2 text-[10px] font-black text-primary uppercase bg-primary/10 px-4 py-2.5 rounded-2xl border border-primary/20 hover:bg-primary/20 transition-all active:scale-95"
+                     >
+                        <IconPlus size={14} /> Custom Match
+                     </button>
                      <button onClick={() => exportBracketPDF(tournament, state.players, showAlert)} className="flex items-center gap-2 text-[10px] font-black text-primary uppercase bg-primary/10 px-4 py-2.5 rounded-2xl border border-primary/20 hover:bg-primary/20 transition-all active:scale-95">
                         <IconDownload size={14} /> Export Scroll (PDF)
                      </button>
                 </div>
                 
                 <div className="space-y-10">
+                    {/* Exhibition Battles (Custom Matches) */}
+                    {matches.filter(m => m.isCustom).length > 0 && (
+                        <div className="space-y-4">
+                             <div className="flex items-center gap-3 pl-2">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-hype-500"></div>
+                                 <h3 className="text-[11px] font-black text-hype-500/60 uppercase tracking-[0.4em]">EXHIBITION BATTLES</h3>
+                             </div>
+                             <div className="grid grid-cols-1 gap-4">
+                                 {matches.filter(m => m.isCustom).map(m => {
+                                     const isComplete = m.status === 'completed';
+                                     return (
+                                         <div key={m.id} className="bg-zinc-900/50 border-2 border-hype-500/20 rounded-[2rem] p-6 flex justify-between items-center manga-shadow group hover:border-hype-500/40 transition-all">
+                                             <div className={`flex-1 text-sm font-headline font-black uppercase italic transform -skew-x-12 transition-colors ${m.scoreA! > m.scoreB! ? 'text-hype-500' : 'text-on-surface-variant/40'}`}>
+                                                 {m.teamA.length ? getNames(m.teamA) : 'TBD'}
+                                             </div>
+                                             <div className="flex flex-col items-center gap-1 px-6">
+                                                 <div className="text-[10px] font-black text-hype-500/20 uppercase italic tracking-widest">CUSTOM</div>
+                                                 <div className="text-base font-mono font-black text-hype-500 bg-hype-500/5 px-3 py-1 rounded-lg border border-hype-500/10">
+                                                     {isComplete ? `${m.scoreA}-${m.scoreB}` : '??'}
+                                                 </div>
+                                             </div>
+                                             <div className={`flex-1 text-right text-sm font-headline font-black uppercase italic transform -skew-x-12 transition-colors ${m.scoreB! > m.scoreA! ? 'text-hype-500' : 'text-on-surface-variant/40'}`}>
+                                                 {m.teamB.length ? getNames(m.teamB) : 'TBD'}
+                                             </div>
+                                         </div>
+                                     )
+                                 })}
+                             </div>
+                        </div>
+                    )}
+
                     {['semi', 'final', 'third_place'].map(round => {
                         const roundMatches = matches.filter(m => m.bracketRound === round);
                         if (roundMatches.length === 0) return null;
@@ -621,6 +786,17 @@ const TournamentManager: React.FC<TournamentManagerProps> = ({
                 onHighlight={() => onHighlight && onHighlight(scoringMatch.id)}
             />
         )}
+
+        <AnimatePresence>
+            {showCustomMatchModal && (
+                <CustomMatchModal 
+                    players={state.players}
+                    onSave={handleSaveCustomMatch}
+                    onCancel={() => setShowCustomMatchModal(false)}
+                    isDarkMode={isDarkMode}
+                />
+            )}
+        </AnimatePresence>
     </div>
   );
 };

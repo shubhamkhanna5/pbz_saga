@@ -133,7 +133,11 @@ export async function upsertMatches(matches: any[]) {
       no_show_player_ids: m.noShowPlayerIds || [],
       is_forfeit: m.isForfeit || false,
       order_index: m.orderIndex || 0,
-      events: m.events || [],
+      is_custom: m.isCustom || false,
+      timestamp: m.timestamp || Date.now(),
+      events: m.isCustom 
+        ? [...(m.events || []), { id: 'custom_marker', type: 'custom_marker', timestamp: Date.now() }] 
+        : (m.events || []),
       highlights: m.highlights || [],
       pod_id: m.podId || null,
       cycle_index: m.cycleIndex !== undefined ? m.cycleIndex : null

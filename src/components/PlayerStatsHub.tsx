@@ -85,7 +85,7 @@ const PlayerStatsHub: React.FC<PlayerStatsHubProps> = ({ state }) => {
                             <span className="group-hover:scale-110 transition-transform">{p.avatar || '🥋'}</span>
                           </div>
                           <div>
-                              <div className="font-headline font-black text-on-surface italic text-xl uppercase tracking-tight transform -skew-x-6 group-hover:text-primary transition-colors">{p.name}</div>
+                              <div className="font-headline font-black text-on-surface italic text-xl uppercase tracking-tight transform -skew-x-6 group-hover:text-primary transition-colors">{p.name.toUpperCase()}</div>
                               <div className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.2em] flex items-center gap-2 mt-1">
                                   <IconActivity size={12} className="text-primary/40" /> {p.gamesPlayed} Battles
                               </div>

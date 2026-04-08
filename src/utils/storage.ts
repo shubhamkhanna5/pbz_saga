@@ -67,5 +67,5 @@ export const generateId = (): string => {
 
 export const formatPlayerName = (fullName: string): string => {
   if (!fullName) return '';
-  return fullName.trim();
+  return fullName.trim().toUpperCase();
 };

@@ -681,7 +681,7 @@ export function generatePodLeagueDay(
   const baseSeed = parseInt(leagueId.substring(0, 8), 16) + week * 100 + day;
   const dayId = generateId();
   
-  const { matches: rawMatches, cycles: actualCycles } = generatePodSchedule(playerIds, cycles, leagueId);
+  const { matches: rawMatches, cycles: actualCycles, podCompositions } = generatePodSchedule(playerIds, cycles, leagueId);
   const matches: LeagueMatch[] = rawMatches.map((m, idx) => ({
     ...m,
     dayId,
@@ -705,6 +705,7 @@ export function generatePodLeagueDay(
     attendees: playerIds,
     config: { hours: actualCycles, courts: Math.ceil(playerIds.length / 4) },
     debugLog: [],
+    podCompositions,
   };
 }
 

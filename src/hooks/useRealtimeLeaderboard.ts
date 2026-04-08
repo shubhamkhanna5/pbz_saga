@@ -32,18 +32,18 @@ export function useRealtimeLeaderboard() {
     // Initial load
     refreshLeaderboard()
 
-    // Subscribe to new matches
+    // Subscribe to all match changes (INSERT, UPDATE, DELETE)
     const subscription = supabase
       .channel('matches-channel')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', 
           schema: 'public',
           table: 'matches'
         },
         () => {
-          // Refresh when new match is added
+          // Refresh when matches change
           refreshLeaderboard()
         }
       )

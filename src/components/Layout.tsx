@@ -87,7 +87,7 @@ const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate
       )}
 
       {/* Main Content */}
-      <main className="flex-1 w-full px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 z-10 relative">
+      <main className="flex-1 w-full px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 relative">
         <div className="max-w-md mx-auto h-full">
           {children}
         </div>

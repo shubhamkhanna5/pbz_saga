@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDialog } from './ui/DialogProvider';
 import { AppState, League, LeagueDay, Player, LeagueMatch } from '../types';
@@ -16,6 +16,7 @@ import ScoreModal from './ScoreModal';
 import MatchActionModal from './MatchActionModal';
 import DayRosterModal from './DayRosterModal';
 import FreeAgentModal from './FreeAgentModal';
+import CustomMatchModal from './CustomMatchModal';
 import { selectScoreboardPlayers } from '../utils/selectors';
 import LeagueIntelligencePanel from './LeagueIntelligencePanel';
 import { updateStatsForGame, finalizeGameSilently } from '../utils/engine';
@@ -43,27 +44,7 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
   const [showRosterModal, setShowRosterModal] = useState(false);
   const [showFreeAgentModal, setShowFreeAgentModal] = useState(false);
   const [showIntelligence, setShowIntelligence] = useState(false);
-  const [recentMatches, setRecentMatches] = useState<any[]>([]);
-  const [loadingMatches, setLoadingMatches] = useState(false);
-
-  const activeLeague = state.activeLeague;
-
-  // Fetch recent matches when active league changes
-  useEffect(() => {
-    if (activeLeague?.id) {
-      setLoadingMatches(true);
-      getRecentMatches(activeLeague.id)
-        .then(matches => {
-          setRecentMatches(matches || []);
-        })
-        .catch(err => {
-          console.error('Error fetching recent matches:', err);
-        })
-        .finally(() => {
-          setLoadingMatches(false);
-        });
-    }
-  }, [activeLeague?.id]);
+  const [showCustomMatchModal, setShowCustomMatchModal] = useState(false);
 
   // Day Generation Config
   const [nextCourts, setNextCourts] = useState(MATCH_CONFIG.COURTS);
@@ -71,6 +52,31 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
 
   const [leagueName, setLeagueName] = useState("PBZ Frieza Saga");
   const [attendees, setAttendees] = useState<Set<string>>(new Set());
+
+  const activeLeague = state.activeLeague;
+
+  const allCustomMatches = useMemo(() => {
+    if (!activeLeague?.days) return [];
+    const custom: any[] = [];
+    activeLeague.days.forEach(day => {
+      (day.matches || []).forEach(match => {
+        const isCustom = match.isCustom || 
+                        (match as any).is_custom || 
+                        (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) ||
+                        (typeof match.events === 'string' && (match.events as string).includes('custom_marker'));
+        
+        if (isCustom) {
+          custom.push({ ...match, dayNumber: day.day });
+        }
+      });
+    });
+    // Sort by timestamp if available, otherwise fallback to day/order
+    return custom.sort((a, b) => {
+      if (a.timestamp && b.timestamp) return b.timestamp - a.timestamp;
+      if (a.dayNumber !== b.dayNumber) return b.dayNumber - a.dayNumber;
+      return (b.orderIndex || 0) - (a.orderIndex || 0);
+    });
+  }, [activeLeague]);
 
   const playerMap = useMemo(() => {
     const map = new Map<string, Player>();
@@ -391,6 +397,58 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
       }
   };
 
+  const handleSaveCustomMatch = (teamA: string[], teamB: string[], scoreA: number, scoreB: number, type: 'singles' | 'doubles') => {
+    if (!activeLeague || !selectedDayId) return;
+
+    const dayIndex = activeLeague.days?.findIndex(d => d.id === selectedDayId);
+    if (dayIndex === undefined || dayIndex === -1) return;
+
+    const updatedLeague = { ...activeLeague };
+    const days = [...(updatedLeague.days || [])];
+    const day = { ...days[dayIndex] };
+    const matches = [...day.matches];
+
+    const newMatch: LeagueMatch = {
+      id: generateId(),
+      dayId: selectedDayId,
+      courtId: 1,
+      round: Math.max(...matches.map(m => m.round), 0) + 1,
+      teamA,
+      teamB,
+      scoreA,
+      scoreB,
+      isCompleted: true,
+      type,
+      status: 'completed',
+      isCustom: true,
+      timestamp: Date.now(),
+      noShowPlayerIds: [],
+      orderIndex: matches.length,
+      events: [{ type: 'custom_marker', timestamp: Date.now() } as any],
+      highlights: []
+    };
+
+    day.matches = [...matches, newMatch];
+    days[dayIndex] = day;
+    updatedLeague.days = days;
+
+    console.log("⚔️ SAVING CUSTOM MATCH:", newMatch);
+
+    const updatedPlayers = updateStatsForGame(
+      state.players,
+      teamA,
+      teamB,
+      scoreA,
+      scoreB,
+      type
+    );
+
+    onUpdatePlayers(updatedPlayers);
+    onUpdateLeague(updatedLeague);
+    setShowCustomMatchModal(false);
+    vibrate('success');
+  };
+
   const handleMatchOverride = (matchId: string, sA: number, sB: number) => {
       if (!activeLeague || !isAdmin) return;
       
@@ -663,6 +721,12 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                         </button>
                     )}
                     <button 
+                        onClick={() => setShowCustomMatchModal(true)}
+                        className="bg-primary/10 text-primary hover:bg-primary/20 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2"
+                    >
+                        <IconPlus size={12} /> CUSTOM MATCH
+                    </button>
+                    <button 
                         onClick={handleExportPDF}
                         className="bg-white text-black hover:bg-zinc-200 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_10px_20px_rgba(255,255,255,0.1)] active:scale-95 transition-all"
                     >
@@ -745,50 +809,62 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] px-2">CHRONICLES</h3>
-                    <div className="grid grid-cols-1 gap-3">
-                        {(activeLeague?.days?.length || 0) === 0 && (
-                            <div className="space-y-6">
-                                <div className="text-center py-12 bg-zinc-900/20 rounded-[2.5rem] border-2 border-dashed border-zinc-800">
-                                    <p className="text-zinc-700 font-black uppercase text-[9px] tracking-widest italic">The arena awaits its first legend...</p>
-                                </div>
-
-                                {recentMatches.length > 0 && (
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-3 px-4">
-                                            <div className="h-px flex-1 bg-outline/10"></div>
-                                            <h4 className="text-[11px] font-headline font-black text-on-surface-variant/40 uppercase tracking-[0.3em] transform -skew-x-12">Recent Chronicles</h4>
-                                            <div className="h-px flex-1 bg-outline/10"></div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            {recentMatches.map((match) => (
-                                                <div key={match.id} className="dbz-card p-6 relative overflow-hidden manga-shadow bg-surface/90 backdrop-blur-sm border-primary/10 flex items-center justify-between gap-4 group hover:scale-[1.02] transition-all">
-                                                    <div className="flex-1 text-right">
-                                                        <div className="text-xs font-headline font-black text-on-surface uppercase truncate transform -skew-x-6 group-hover:text-primary transition-colors">
-                                                            {match.team_a_names?.join(' & ') || 'Team A'}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col items-center gap-1 px-4 relative">
-                                                        <div className="text-xl font-headline font-black text-primary italic drop-shadow-sm">
-                                                            {match.score_a} - {match.score_b}
-                                                        </div>
-                                                        <div className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest">
-                                                            {format(new Date(match.created_at), 'MMM d')}
-                                                        </div>
-                                                        <div className="absolute -bottom-1 w-full h-0.5 bg-primary/20 scale-x-0 group-hover:scale-x-100 transition-transform"></div>
-                                                    </div>
-                                                    <div className="flex-1 text-left">
-                                                        <div className="text-xs font-headline font-black text-on-surface uppercase truncate transform -skew-x-6 group-hover:text-primary transition-colors">
-                                                            {match.team_b_names?.join(' & ') || 'Team B'}
-                                                        </div>
-                                                    </div>
+                <div className="space-y-6">
+                    {/* EXHIBITION CHRONICLES - Global Custom Match Log */}
+                    {isAdmin && allCustomMatches.length > 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-2">
+                                <h3 className="text-[10px] font-black text-hype-500 uppercase tracking-[0.4em]">EXHIBITION CHRONICLES</h3>
+                                <span className="text-[9px] font-black text-hype-500/60 uppercase tracking-widest">{allCustomMatches.length} BATTLES</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                {allCustomMatches.slice(0, 5).map((match) => (
+                                    <motion.div
+                                        key={match.id}
+                                        whileHover={{ scale: 1.01, x: 4 }}
+                                        onClick={() => setSelectedDayId(match.dayId)}
+                                        className="bg-zinc-900/40 border border-hype-500/20 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-zinc-900/60 transition-all group"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-xl bg-hype-500/10 border border-hype-500/20 flex items-center justify-center text-hype-500 font-black italic text-xs">
+                                                Z
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black text-hype-500 uppercase tracking-widest">CHAPTER {match.dayNumber}</span>
+                                                    <span className="w-1 h-1 rounded-full bg-zinc-800"></span>
+                                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{match.type}</span>
                                                 </div>
-                                            ))}
+                                                <div className="text-xs font-black text-white italic uppercase mt-0.5">
+                                                    {match.teamA.map(id => playerMap.get(id)?.name).join(' & ')} vs {match.teamB.map(id => playerMap.get(id)?.name).join(' & ')}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-black text-hype-500 italic">
+                                                {match.scoreA} - {match.scoreB}
+                                            </div>
+                                            <div className="text-[8px] font-black text-zinc-600 uppercase tracking-tighter mt-0.5 group-hover:text-hype-500 transition-colors">
+                                                VIEW BATTLE
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                                {allCustomMatches.length > 5 && (
+                                    <p className="text-center text-[9px] font-black text-zinc-600 uppercase tracking-[0.2em] py-2 italic">
+                                        + {allCustomMatches.length - 5} MORE EXHIBITION BATTLES
+                                    </p>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] px-2">CHRONICLES</h3>
+                        <div className="grid grid-cols-1 gap-3">
+                        {(activeLeague?.days?.length || 0) === 0 && (
+                            <div className="text-center py-12 bg-zinc-900/20 rounded-[2.5rem] border-2 border-dashed border-zinc-800">
+                                <p className="text-zinc-700 font-black uppercase text-[9px] tracking-widest italic">The arena awaits its first legend...</p>
                             </div>
                         )}
                         {activeLeague?.days?.map(day => (
@@ -811,7 +887,11 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                                         <span className="manga-skew-reverse">D{day.day}</span>
                                     </div>
                                     <div>
-                                        <div className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-[0.2em]">WEEK {day.week}</div>
+                                        <div className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-[0.2em]">
+                                            WEEK {day.week} {day.matches.filter(m => m.isCustom).length > 0 && (
+                                                <span className="text-hype-500 ml-2">• {day.matches.filter(m => m.isCustom).length} CUSTOM</span>
+                                            )}
+                                        </div>
                                         <div className="text-on-surface font-headline font-black italic uppercase tracking-tight text-lg group-hover:text-primary transition-colors transform -skew-x-6">THE HYBRID CLASH</div>
                                     </div>
                                 </div>
@@ -821,6 +901,7 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                             </div>
                         ))}
                     </div>
+                </div>
 
                     {!isCompleted && (
                         isAdmin ? (
@@ -997,6 +1078,17 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                 onHighlight={() => onHighlight && onHighlight(scoringMatch.match.id)} // Pass highlight handler
             />
         )}
+
+        <AnimatePresence>
+            {showCustomMatchModal && (
+                <CustomMatchModal 
+                    players={state.players}
+                    onSave={handleSaveCustomMatch}
+                    onCancel={() => setShowCustomMatchModal(false)}
+                    isDarkMode={isDarkMode}
+                />
+            )}
+        </AnimatePresence>
 
         {managingMatch && (
             <MatchActionModal 

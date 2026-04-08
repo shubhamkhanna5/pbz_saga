@@ -79,12 +79,41 @@ export const generateMatchDayPDF = (
   }
 
   const doc = new jsPDFConstructor();
-  const getPlayerName = (id: string) => players.find(p => p.id === id)?.name || 'Unknown';
+  const getPlayerName = (id: string) => (players.find(p => p.id === id)?.name || 'Unknown').toUpperCase();
   let y = 20;
 
   const dayLabel = `${day.day || 1}`;
   const week = day.week || 1;
   y = drawDayHeader(doc, leagueName, dayLabel, week, y);
+
+  // Pod Compositions (if any)
+  if (day.podCompositions && day.podCompositions.length > 0) {
+    day.podCompositions.forEach((comp, idx) => {
+      const spaceNeeded = 30 + (comp.pods.length * 10);
+      if (y + spaceNeeded > 280) { doc.addPage(); y = 20; }
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(240, 240, 255);
+      doc.rect(20, y - 6, 170, 8, 'F');
+      doc.setTextColor(0);
+      
+      const swapLabel = idx > 0 ? `AFTER SWAP ${idx}` : 'INITIAL PODS';
+      doc.text(`${swapLabel} (CYCLE ${comp.cycleIndex + 1})`, 24, y);
+      y += 10;
+
+      comp.pods.forEach(pod => {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${pod.id}:`, 24, y);
+        doc.setFont("helvetica", "normal");
+        const names = pod.players.map(getPlayerName).join(', ');
+        doc.text(names, 45, y);
+        y += 6;
+      });
+      y += 10;
+    });
+  }
 
   // Dynamic Stage Detection
   // Determine total stages from the actual generated matches rather than static config
@@ -149,7 +178,7 @@ export const generateLeagueGloryPDF = (
   }
 
   const doc = new jsPDFConstructor();
-  const getPlayerName = (id: string) => players.find(p => p.id === id)?.name || 'Unknown';
+  const getPlayerName = (id: string) => (players.find(p => p.id === id)?.name || 'Unknown').toUpperCase();
   
   const COLORS = {
     red: [220, 38, 38],
@@ -356,7 +385,7 @@ export const exportBracketPDF = (
     return;
   }
   const doc = new jsPDFConstructor();
-  const getPlayerName = (id: string) => players.find(p => p.id === id)?.name || 'Unknown';
+  const getPlayerName = (id: string) => (players.find(p => p.id === id)?.name || 'Unknown').toUpperCase();
   const getTeamName = (team: string[]) => team.map(getPlayerName).join(' & ');
 
   doc.setFontSize(22);

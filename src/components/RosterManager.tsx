@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { AppState, Player, SkillLevel } from '../types';
-import { IconUserPlus, IconTrash, IconCheck, IconX, IconZap, IconUsers } from './ui/Icons';
+import { IconUserPlus, IconTrash, IconCheck, IconX, IconZap, IconUsers, IconSearch } from './ui/Icons';
 import { generateId } from '../utils/storage';
 import { vibrate } from '../utils/godMode';
 import { useDialog } from './ui/DialogProvider';
@@ -24,6 +24,7 @@ const RosterManager: React.FC<RosterManagerProps> = ({
   const { showConfirm } = useDialog();
   const [newName, setNewName] = useState('');
   const [newSkill, setNewSkill] = useState<SkillLevel>(SkillLevel.Intermediate);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +41,7 @@ const RosterManager: React.FC<RosterManagerProps> = ({
 
     const newPlayer: Player = {
       id: generateId(),
-      name: normalizedName,
+      name: normalizedName.toUpperCase(),
       skill: newSkill,
       gamesPlayed: 0,
       isPresent: true, 
@@ -60,7 +61,11 @@ const RosterManager: React.FC<RosterManagerProps> = ({
     setNewName('');
   };
 
-  const sortedPlayers = [...players].sort((a, b) => {
+  const filteredPlayers = players.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sortedPlayers = [...filteredPlayers].sort((a, b) => {
      if (a.isPresent === b.isPresent) return a.name.localeCompare(b.name);
      return a.isPresent ? -1 : 1;
   });
@@ -77,29 +82,45 @@ const RosterManager: React.FC<RosterManagerProps> = ({
       </div>
 
       {/* Quick Add Form */}
-      <form onSubmit={handleAdd} className="dbz-card p-6 space-y-5 relative overflow-hidden manga-shadow">
-        <div className="absolute top-0 left-0 w-1.5 bg-primary h-full opacity-80"></div>
-        <div className="flex items-center gap-2 mb-2">
-            <IconZap size={14} className="text-primary animate-pulse" />
-            <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em]">Recruit Fighter</h3>
-        </div>
-        <div className="flex gap-3">
+      <div className="space-y-4">
+        <form onSubmit={handleAdd} className="dbz-card p-6 space-y-5 relative overflow-hidden manga-shadow">
+            <div className="absolute top-0 left-0 w-1.5 bg-primary h-full opacity-80"></div>
+            <div className="flex items-center gap-2 mb-2">
+                <IconZap size={14} className="text-primary animate-pulse" />
+                <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em]">Recruit Fighter</h3>
+            </div>
+            <div className="flex gap-3">
+                <input 
+                    type="text" 
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="FIGHTER NAME"
+                    className="flex-1 bg-surface-variant/50 border-2 border-outline/10 text-on-surface rounded-xl px-5 py-4 font-headline font-black italic uppercase tracking-widest placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary transition-all"
+                />
+                <button 
+                    type="submit"
+                    disabled={!newName.trim()}
+                    className="bg-primary text-on-primary w-16 rounded-xl font-black shadow-lg disabled:opacity-30 disabled:grayscale transition-all hover:scale-105 active:scale-95 flex items-center justify-center manga-skew"
+                >
+                    <IconUserPlus size={24} className="manga-skew-reverse" />
+                </button>
+            </div>
+        </form>
+
+        {/* Search Bar */}
+        <div className="relative group">
+            <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
+                <IconSearch size={18} className="text-on-surface-variant/40 group-focus-within:text-primary transition-colors" />
+            </div>
             <input 
-                type="text" 
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="FIGHTER NAME"
-                className="flex-1 bg-surface-variant/50 border-2 border-outline/10 text-on-surface rounded-xl px-5 py-4 font-headline font-black italic uppercase tracking-widest placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary transition-all"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="SEARCH Z-FIGHTERS..."
+                className="w-full bg-surface-variant/30 border-2 border-outline/10 text-on-surface rounded-2xl pl-14 pr-6 py-4 font-headline font-black italic uppercase tracking-widest placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50 transition-all manga-shadow"
             />
-            <button 
-                type="submit"
-                disabled={!newName.trim()}
-                className="bg-primary text-on-primary w-16 rounded-xl font-black shadow-lg disabled:opacity-30 disabled:grayscale transition-all hover:scale-105 active:scale-95 flex items-center justify-center manga-skew"
-            >
-                <IconUserPlus size={24} className="manga-skew-reverse" />
-            </button>
         </div>
-      </form>
+      </div>
 
       {/* Fighter List */}
       <div className="space-y-4">
@@ -140,7 +161,7 @@ const RosterManager: React.FC<RosterManagerProps> = ({
                             </div>
                             <div>
                                 <span className={`font-headline font-black italic uppercase tracking-tight text-xl transition-colors duration-500 ${player.isPresent ? 'text-on-surface' : 'text-on-surface-variant'}`}>
-                                    {player.name}
+                                    {player.name.toUpperCase()}
                                 </span>
                                 <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mt-0.5 transition-colors duration-500">
                                     {player.isPresent ? 'READY FOR BATTLE' : 'OFFLINE'}

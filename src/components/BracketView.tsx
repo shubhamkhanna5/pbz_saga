@@ -57,9 +57,17 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
   // Sort matches by orderIndex (Soft Order)
   const sortedMatches = [...day.matches].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
+  const isCustom = (m: LeagueMatch) => m.isCustom || (m as any).is_custom || (m.events && Array.isArray(m.events) && m.events.some((e: any) => e.type === 'custom_marker'));
+
   // Separate Queue (Pending) from History (Completed)
-  const activeQueue = sortedMatches.filter(m => m.status === 'scheduled');
-  const history = sortedMatches.filter(m => m.status !== 'scheduled');
+  const activeQueue = sortedMatches.filter(m => {
+    if (!isAdmin && isCustom(m)) return false;
+    return m.status === 'scheduled';
+  });
+  const history = sortedMatches.filter(m => {
+    if (!isAdmin && isCustom(m)) return false;
+    return m.status !== 'scheduled';
+  });
 
   const completedCount = history.length;
   
@@ -92,6 +100,11 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
 
     const canInteract = !isComplete && match.status !== 'cancelled';
 
+    const isCustomMatch = match.isCustom || 
+                         (match as any).is_custom || 
+                         (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) ||
+                         (typeof match.events === 'string' && (match.events as string).includes('custom_marker'));
+
     return (
         <motion.div 
           key={match.id}
@@ -116,8 +129,10 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
         >
           <div className="flex justify-between items-center mb-5">
              <div className="flex items-center gap-2">
-                 <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest bg-black/50 px-3 py-1 rounded-xl border border-white/5">
-                   {match.podId ? (
+                 <span className={`text-[9px] font-black uppercase tracking-widest bg-black/50 px-3 py-1 rounded-xl border border-white/5 ${isCustomMatch ? 'text-hype-500 border-hype-500/30 bg-hype-500/5' : 'text-zinc-600'}`}>
+                   {isCustomMatch ? (
+                     'CUSTOM MATCH'
+                   ) : match.podId ? (
                      `${match.cycleIndex && match.cycleIndex > 0 ? 'SWAPPED ' : ''}${match.podId.toUpperCase()} MATCHES`
                    ) : (
                      `COURT ${match.courtId} • ${match.type} • ROUND ${match.round}`
@@ -227,7 +242,7 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
               </div>
           </div>
 
-          {/* Completed History */}
+          {/* Completed History (All matches, including custom) */}
           {history.length > 0 && (
               <div className="space-y-4 pt-4">
                   <div className="flex items-center gap-4 px-2">

@@ -87,8 +87,8 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
   };
 
   const valid = isValidScore(scoreA, scoreB);
-  const isBagel = (scoreA === 15 && scoreB === 0) || (scoreB === 15 && scoreA === 0);
-  const isGoldenPoint = (scoreA === 15 && scoreB === 14) || (scoreB === 15 && scoreA === 14);
+  const isBagel = (scoreA === MATCH_RULES.POINTS_TO_WIN && scoreB === 0) || (scoreB === MATCH_RULES.POINTS_TO_WIN && scoreA === 0);
+  const isGoldenPoint = (scoreA === MATCH_RULES.POINTS_TO_WIN && scoreB === MATCH_RULES.POINTS_TO_WIN - 1) || (scoreB === MATCH_RULES.POINTS_TO_WIN && scoreA === MATCH_RULES.POINTS_TO_WIN - 1);
   const highlightCount = game.highlights?.length || 0;
 
   return (
@@ -136,11 +136,11 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
                   <span className="block text-[10px] font-black text-primary/60 uppercase tracking-[0.4em] mb-1 manga-skew">
                     <span className="manga-skew-reverse block">TEAM ALPHA</span>
                   </span>
-                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreA === 11 ? 'text-primary' : 'text-on-surface'}`}>
-                      {teamANames}
+                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreA === MATCH_RULES.POINTS_TO_WIN ? 'text-primary' : 'text-on-surface'}`}>
+                      {teamANames.toUpperCase()}
                   </h3>
                 </div>
-                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreA === 11 ? 'text-primary animate-pulse' : 'text-on-surface'}`}>
+                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreA === MATCH_RULES.POINTS_TO_WIN ? 'text-primary animate-pulse' : 'text-on-surface'}`}>
                   {scoreA}
                 </div>
               </div>
@@ -157,7 +157,7 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
                   whileTap={{ scale: 0.9 }}
                   onClick={() => increment(setScoreA, scoreA, true)}
                   className={`flex-[2] h-14 rounded-2xl flex items-center justify-center gap-2 transition-all border-2
-                    ${scoreA === 11 ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-primary/20 border-primary/30 text-primary shadow-[0_0_15px_rgba(255,140,0,0.1)] hover:bg-primary/30'}`}
+                    ${scoreA === MATCH_RULES.POINTS_TO_WIN ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-primary/20 border-primary/30 text-primary shadow-[0_0_15px_rgba(255,140,0,0.1)] hover:bg-primary/30'}`}
                 >
                   <IconPlus size={20} />
                   <span className="font-black italic uppercase tracking-widest text-xs">Point</span>
@@ -181,11 +181,11 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
                   <span className="block text-[10px] font-black text-secondary/60 uppercase tracking-[0.4em] mb-1 manga-skew">
                     <span className="manga-skew-reverse block">TEAM BRAVO</span>
                   </span>
-                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreB === 11 ? 'text-secondary' : 'text-on-surface'}`}>
-                      {teamBNames}
+                  <h3 className={`text-2xl font-headline font-black italic transform -skew-x-12 leading-tight ${scoreB === MATCH_RULES.POINTS_TO_WIN ? 'text-secondary' : 'text-on-surface'}`}>
+                      {teamBNames.toUpperCase()}
                   </h3>
                 </div>
-                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreB === 11 ? 'text-secondary animate-pulse' : 'text-on-surface'}`}>
+                <div className={`text-5xl font-headline font-black italic transform -skew-x-12 ${scoreB === MATCH_RULES.POINTS_TO_WIN ? 'text-secondary animate-pulse' : 'text-on-surface'}`}>
                   {scoreB}
                 </div>
               </div>
@@ -202,7 +202,7 @@ const ScoreModal: React.FC<ScoreModalProps> = ({ game, onSave, onCancel, teamANa
                   whileTap={{ scale: 0.9 }}
                   onClick={() => increment(setScoreB, scoreB, false)}
                   className={`flex-[2] h-14 rounded-2xl flex items-center justify-center gap-2 transition-all border-2
-                    ${scoreB === 11 ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-secondary/20 border-secondary/30 text-secondary shadow-[0_0_15px_rgba(30,64,175,0.1)] hover:bg-secondary/30'}`}
+                    ${scoreB === MATCH_RULES.POINTS_TO_WIN ? 'bg-surface-variant/10 border-outline/5 text-on-surface-variant/30' : 'bg-secondary/20 border-secondary/30 text-secondary shadow-[0_0_15px_rgba(30,64,175,0.1)] hover:bg-secondary/30'}`}
                 >
                   <IconPlus size={20} />
                   <span className="font-black italic uppercase tracking-widest text-xs">Point</span>

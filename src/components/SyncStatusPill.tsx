@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export type SyncStatus = 'synced' | 'syncing' | 'offline';
+export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
 
 interface Props {
   status: SyncStatus;
@@ -24,6 +24,12 @@ export function SyncStatusPill({ status, onRetry }: Props) {
     },
     offline: {
       label: 'OFFLINE',
+      color: 'bg-zinc-500',
+      border: 'border-zinc-500/20',
+      glow: 'shadow-[0_0_10px_rgba(113,113,122,0.2)]'
+    },
+    error: {
+      label: 'ERROR',
       color: 'bg-red-500',
       border: 'border-red-500/20',
       glow: 'shadow-[0_0_10px_rgba(239,68,68,0.2)]'
@@ -34,8 +40,8 @@ export function SyncStatusPill({ status, onRetry }: Props) {
 
   return (
     <div 
-        onClick={status === 'offline' ? onRetry : undefined}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border ${s.border} transition-all duration-500 ${s.glow} ${status === 'offline' ? 'cursor-pointer hover:bg-zinc-900 pointer-events-auto' : 'pointer-events-none'}`}
+        onClick={(status === 'offline' || status === 'error') ? onRetry : undefined}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border ${s.border} transition-all duration-500 ${s.glow} ${(status === 'offline' || status === 'error') ? 'cursor-pointer hover:bg-zinc-900 pointer-events-auto' : 'pointer-events-none'}`}
     >
       <div className="relative">
         <div className={`w-1.5 h-1.5 rounded-full ${s.color} relative z-10`} />
@@ -44,7 +50,7 @@ export function SyncStatusPill({ status, onRetry }: Props) {
         )}
       </div>
       <span className="text-[9px] font-black tracking-widest text-zinc-400">
-        {status === 'offline' ? 'RETRY SYNC' : s.label}
+        {(status === 'offline' || status === 'error') ? 'RETRY SYNC' : s.label}
       </span>
     </div>
   );

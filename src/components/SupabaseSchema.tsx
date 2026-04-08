@@ -174,6 +174,21 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='sessions' AND column_name='history') THEN
         ALTER TABLE public.sessions ADD COLUMN history JSONB DEFAULT '[]'::jsonb;
     END IF;
+
+    -- 2.6. FIX FOREIGN KEY CONSTRAINTS (FOR ROSTER CLEANUP)
+    -- This handles the case where players are referenced in older or custom tables
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='match_players') THEN
+        BEGIN
+            ALTER TABLE public.match_players 
+            DROP CONSTRAINT IF EXISTS match_players_player_id_fkey;
+            
+            ALTER TABLE public.match_players
+            ADD CONSTRAINT match_players_player_id_fkey 
+            FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+        EXCEPTION WHEN OTHERS THEN
+            -- Ignore if column names or constraints differ
+        END;
+    END IF;
 END $$;
 
 -- 3. CREATE VIEWS

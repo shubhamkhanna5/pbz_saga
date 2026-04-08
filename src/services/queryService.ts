@@ -72,7 +72,7 @@ export function clearLeaderboardCache() {
 export async function getLeagueMatches(leagueId: string) {
   const fetchPromise = supabase
     .from('matches')
-    .select('*')
+    .select('id, league_id, day_id, court_id, round, team_a, team_b, score_a, score_b, is_completed, type, status, no_show_player_ids, is_forfeit, order_index, events, highlights, pod_id, cycle_index, is_custom, timestamp')
     .eq('league_id', leagueId)
     .order('created_at', { ascending: true });
 
@@ -99,7 +99,9 @@ export async function getLeagueMatches(leagueId: string) {
     isForfeit: m.is_forfeit,
     orderIndex: m.order_index,
     podId: m.pod_id,
-    cycleIndex: m.cycle_index
+    cycleIndex: m.cycle_index,
+    isCustom: m.is_custom || (m.events && Array.isArray(m.events) && m.events.some((e: any) => e.type === 'custom_marker')) || false,
+    timestamp: m.timestamp
   }));
 }
 

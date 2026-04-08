@@ -6,6 +6,7 @@ import { getLeagueStats } from '../services/leagueHistoryService';
 import { calculatePowerLevel, getAuraClass } from '../utils/godMode';
 import { IconTrophy, IconClock, IconZap, IconFlame, IconSword, IconDumbbell, IconAlert, IconTrendingUp, IconActivity } from './ui/Icons';
 import { calculateStandings as calculateTournamentStandings } from '../utils/tournamentLogic';
+import { calculateLeagueStandings } from '../utils/leagueLogic';
 import PlayerProfileModal from './PlayerProfileModal';
 
 interface LeaderboardsManagerProps {
@@ -50,6 +51,16 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
     loading: liveLoading, 
     error: liveError 
   } = useRealtimeLeaderboard();
+
+  const localActiveStandings = useMemo(() => {
+    if (!activeLeague) return [];
+    try {
+      return calculateLeagueStandings(activeLeague);
+    } catch (err) {
+      console.error("Error calculating local standings:", err);
+      return [];
+    }
+  }, [activeLeague]);
   
   const [activeTab, setActiveTab] = useState<Tab>('live');
   const [selectedLeagueId, setSelectedLeagueId] = useState<string | null>(null);
@@ -128,6 +139,8 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
     let rawStandings = [];
     if (targetLeague.id === 'p30d9dm1x') {
         rawStandings = SAIYAN_SAGA_HARDCODED_STANDINGS;
+    } else if (isTargetActive && localActiveStandings.length > 0) {
+        rawStandings = localActiveStandings;
     } else {
         rawStandings = isTargetActive 
           ? (liveLeaderboard.length > 0 ? liveLeaderboard : (targetLeague.finalStandings || []))
@@ -370,7 +383,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
                                      <div className={`font-headline font-black italic uppercase tracking-tight transform -skew-x-6 group-hover:text-primary transition-colors ${
                                          isChamp ? 'text-aura-gold' : 'text-white'
                                      }`}>
-                                        {p?.name}
+                                        {p?.name?.toUpperCase()}
                                         {s.eligibleForTrophies && !isChamp && <span className="ml-2 text-aura-gold text-[10px]">🏆</span>}
                                      </div>
                                      <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">{s.wins}W / {s.losses}L</div>
@@ -430,11 +443,22 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
         );
     }
 
-    const sortedLive = [...(liveLeaderboard || [])]
+    const displayLeaderboard = activeLeague && localActiveStandings.length > 0
+        ? localActiveStandings.map(s => ({
+            playerId: s.playerId,
+            name: players.find(pl => pl.id === s.playerId)?.name || s.playerId,
+            points: s.points,
+            gamesPlayed: s.gamesPlayed,
+            wins: s.wins,
+            ppg: s.ppg
+          }))
+        : (liveLeaderboard || []);
+
+    const sortedLive = [...displayLeaderboard]
         .map(p => {
             const points = p.points || p.totalPoints || p.total_points || 0;
-            const games = p.gamesPlayed || p.games_played || 0;
-            const ppg = games > 0 ? points / games : 0;
+            const games = p.gamesPlayed || p.games_played || p.games || 0;
+            const ppg = p.ppg || (games > 0 ? points / games : 0);
             return { ...p, points, games, ppg };
         })
         .filter(p => p.games > 0) // Remove players with no games
@@ -492,7 +516,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
                                     <div className={`text-xl font-headline font-black italic uppercase tracking-tighter transform -skew-x-6 group-hover:text-primary transition-colors ${
                                         idx === 0 ? 'text-aura-gold' : 'text-on-surface'
                                     }`}>
-                                        {p.name || p.player_name}
+                                        {(p.name || p.player_name)?.toUpperCase()}
                                         {idx === 0 && <span className="ml-2">👑</span>}
                                     </div>
                                     <div className="text-[10px] font-black text-on-surface-variant/40 uppercase mt-0.5 tracking-widest">

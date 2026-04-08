@@ -5,7 +5,7 @@ import { LeagueMatch, Player } from '../types';
 import { IconX, IconAlert, IconCheck, IconRotate, IconDownload, IconSettings } from './ui/Icons';
 import { vibrate } from '../utils/godMode';
 import { buildHighlightJSON, downloadHighlightJSON } from '../utils/pbzHighlightExport';
-import { isValidScore } from '../utils/rules';
+import { isValidScore, MATCH_RULES } from '../utils/rules';
 
 interface MatchActionModalProps {
   match: LeagueMatch;
@@ -57,7 +57,7 @@ const MatchActionModal: React.FC<MatchActionModalProps> = ({
       if (isNaN(sA) || isNaN(sB)) return;
       
       if (!isValidScore(sA, sB)) {
-          showAlert("Invalid score. Must follow match rules (First to 11, etc.)");
+          showAlert(`Invalid score. Must follow match rules (First to ${MATCH_RULES.POINTS_TO_WIN}, etc.)`);
           return;
       }
 

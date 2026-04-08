@@ -25,6 +25,28 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, isAdmin, onLogout, 
   const sagaSubtitle = activeLeague?.status === 'completed' ? 'SAGA CONCLUDED' : 'THE ULTIMATE BATTLE';
   const sagaStatus = activeLeague?.status === 'completed' ? 'RESULTS SEALED' : 'SAGA IN PROGRESS';
 
+  const allCustomMatches = useMemo(() => {
+    if (!activeLeague?.days) return [];
+    const custom: any[] = [];
+    activeLeague.days.forEach(day => {
+      (day.matches || []).forEach(match => {
+        const isCustom = match.isCustom || 
+                        (match as any).is_custom || 
+                        (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) ||
+                        (typeof match.events === 'string' && (match.events as string).includes('custom_marker'));
+        
+        if (isCustom) {
+          custom.push({ ...match, dayNumber: day.day });
+        }
+      });
+    });
+    return custom.sort((a, b) => {
+      if (a.timestamp && b.timestamp) return b.timestamp - a.timestamp;
+      if (a.dayNumber !== b.dayNumber) return b.dayNumber - a.dayNumber;
+      return (b.orderIndex || 0) - (a.orderIndex || 0);
+    });
+  }, [activeLeague]);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -134,6 +156,28 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, isAdmin, onLogout, 
 
         {/* Buttons Section */}
         <div className="flex flex-col gap-5 w-full relative z-20">
+            {isAdmin && allCustomMatches.length > 0 && (
+                <motion.div 
+                    variants={itemVariants}
+                    className="bg-zinc-900/40 border border-hype-500/20 p-4 rounded-3xl flex flex-col gap-3 mb-2"
+                >
+                    <div className="flex items-center justify-between px-2">
+                        <span className="text-[9px] font-black text-hype-500 uppercase tracking-widest">RECENT EXHIBITIONS</span>
+                        <span className="text-[8px] font-black text-hype-500/40 uppercase">{allCustomMatches.length} TOTAL</span>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        {allCustomMatches.slice(0, 3).map((m, idx) => (
+                            <div key={m.id} className="bg-black/40 border border-white/5 p-3 rounded-2xl min-w-[160px] flex flex-col gap-1">
+                                <div className="text-[8px] font-black text-zinc-500 uppercase">CHAPTER {m.dayNumber}</div>
+                                <div className="text-[10px] font-black text-white italic truncate">
+                                    {m.scoreA}-{m.scoreB}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+
             <motion.button 
                 variants={itemVariants}
                 whileHover={{ scale: 1.02, x: 5 }}
