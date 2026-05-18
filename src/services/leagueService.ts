@@ -18,7 +18,7 @@ export async function getActiveLeague(forceRefresh = false) {
     .from('leagues')
     .select('*')
     .eq('status', 'active')
-    .single()
+    .maybeSingle()
 
   const timeoutPromise = new Promise((_, reject) => 
     setTimeout(() => reject(new Error('League Fetch Timeout')), 15000)
@@ -97,9 +97,16 @@ export async function setActiveLeague(leagueId: string) {
  * Upsert multiple leagues
  */
 export async function upsertLeagues(leagues: any[]) {
+  if (!leagues || leagues.length === 0) return null;
+
+  // Deduplicate by ID to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const uniqueLeagues = Array.from(
+    new Map(leagues.map(l => [l.id, l])).values()
+  )
+
   const { data, error } = await supabase
     .from('leagues')
-    .upsert(leagues.map(l => ({
+    .upsert(uniqueLeagues.map(l => ({
       id: l.id,
       name: l.name,
       status: l.status,
@@ -111,6 +118,11 @@ export async function upsertLeagues(leagues: any[]) {
       matches: l.matches || [],
       final_standings: l.finalStandings || []
     })), { onConflict: 'id' })
+
+  if (error) {
+    console.error('Error upserting leagues:', error);
+    throw error;
+  }
 
   return data
 }

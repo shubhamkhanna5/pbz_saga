@@ -11,14 +11,16 @@ interface CustomMatchModalProps {
   onSave: (teamA: string[], teamB: string[], scoreA: number, scoreB: number, type: 'singles' | 'doubles') => void;
   onCancel: () => void;
   isDarkMode?: boolean;
+  onUpdateDragonBalls?: (playerId: string, delta: number) => void;
 }
 
-const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, onCancel, isDarkMode }) => {
+const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, onCancel, isDarkMode, onUpdateDragonBalls }) => {
   const [teamA, setTeamA] = useState<string[]>([]);
   const [teamB, setTeamB] = useState<string[]>([]);
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
   const [matchType, setMatchType] = useState<'singles' | 'doubles'>('doubles');
+  const [awardedDBPlayers, setAwardedDBPlayers] = useState<Set<string>>(new Set());
 
   const handlePlayerSelect = (playerId: string, team: 'A' | 'B', index: number) => {
     if (team === 'A') {
@@ -56,21 +58,65 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
     const sameTeamOtherIndices = (team === 'A' ? teamA : teamB).filter((_, i) => i !== index);
 
     return (
-      <select
-        value={currentId || ''}
-        onChange={(e) => handlePlayerSelect(e.target.value, team, index)}
-        className="w-full bg-zinc-950 border-2 border-zinc-800 rounded-xl px-4 py-3 text-white font-black text-xs uppercase tracking-widest focus:border-primary outline-none appearance-none cursor-pointer"
-      >
-        <option value="">Select Fighter</option>
-        {sortedPlayers.map(p => {
-          const isSelectedElsewhere = otherTeam.includes(p.id) || sameTeamOtherIndices.includes(p.id);
-          return (
-            <option key={p.id} value={p.id} disabled={isSelectedElsewhere}>
-              {p.name.toUpperCase()}
-            </option>
-          );
-        })}
-      </select>
+      <div className="space-y-2">
+        <select
+          value={currentId || ''}
+          onChange={(e) => handlePlayerSelect(e.target.value, team, index)}
+          className="w-full bg-zinc-950 border-2 border-zinc-800 rounded-xl px-4 py-3 text-white font-black text-xs uppercase tracking-widest focus:border-primary outline-none appearance-none cursor-pointer"
+        >
+          <option value="">Select Fighter</option>
+          {sortedPlayers.map(p => {
+            const isSelectedElsewhere = otherTeam.includes(p.id) || sameTeamOtherIndices.includes(p.id);
+            return (
+              <option key={p.id} value={p.id} disabled={isSelectedElsewhere}>
+                {p.name.toUpperCase()}
+              </option>
+            );
+          })}
+        </select>
+        
+        {currentId && onUpdateDragonBalls && (
+          <div className="flex items-center gap-2 px-1">
+            <motion.button
+              whileTap={awardedDBPlayers.has(currentId) ? {} : { scale: 1.2 }}
+              disabled={awardedDBPlayers.has(currentId)}
+              onClick={() => {
+                onUpdateDragonBalls(currentId, 1);
+                setAwardedDBPlayers(prev => new Set(prev).add(currentId));
+              }}
+              className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 relative overflow-hidden ${
+                awardedDBPlayers.has(currentId)
+                  ? 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  : 'bg-aura-gold/10 text-aura-gold border border-aura-gold/30 hover:bg-aura-gold/20'
+              }`}
+            >
+              {awardedDBPlayers.has(currentId) ? '✓ DB AWARDED' : '+1 DRAGON BALL'}
+              {!awardedDBPlayers.has(currentId) && (
+                <motion.div
+                  className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-aura-gold rounded-full"
+                  animate={{ scale: [1, 1.4, 1], opacity: [0.4, 0.8, 0.4] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                />
+              )}
+            </motion.button>
+            <button
+              onClick={() => {
+                onUpdateDragonBalls(currentId, -1);
+                if (awardedDBPlayers.has(currentId)) {
+                  setAwardedDBPlayers(prev => {
+                    const next = new Set(prev);
+                    next.delete(currentId);
+                    return next;
+                  });
+                }
+              }}
+              className="px-2 py-1.5 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700 text-[10px] hover:bg-zinc-700 transition-all font-black"
+            >
+              -1
+            </button>
+          </div>
+        )}
+      </div>
     );
   };
 

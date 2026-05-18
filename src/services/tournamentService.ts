@@ -7,9 +7,14 @@ import { Tournament } from '../types'
 export async function upsertTournaments(tournaments: Tournament[]) {
   if (!tournaments || tournaments.length === 0) return null;
 
+  // Deduplicate by ID to prevent duplicate key errors or "ON CONFLICT DO UPDATE" issues
+  const uniqueTournaments = Array.from(
+    new Map(tournaments.map(t => [t.id, t])).values()
+  )
+
   const { data, error } = await supabase
     .from('tournaments')
-    .upsert(tournaments.map(t => ({
+    .upsert(uniqueTournaments.map(t => ({
       id: t.id,
       name: t.name,
       date: new Date(t.date).toISOString(),
@@ -59,7 +64,7 @@ export async function getActiveTournament() {
     .from('tournaments')
     .select('*')
     .eq('status', 'active')
-    .single()
+    .maybeSingle()
 
   if (error && error.code !== 'PGRST116') {
     console.error('Error fetching active tournament:', error)

@@ -146,7 +146,7 @@ export async function getPlayerStats(playerName: string) {
     .from('league_leaderboard')
     .select('*')
     .eq('name', playerName)
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.error('Error fetching player stats:', error)

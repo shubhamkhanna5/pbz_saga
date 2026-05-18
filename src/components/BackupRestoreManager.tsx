@@ -18,9 +18,17 @@ interface BackupRestoreManagerProps {
   onHardReset?: () => void;
   onDeleteCurrentSaga?: () => void;
   onUpdateAutoSync?: (enabled: boolean) => void;
+  onFullSync?: () => Promise<void>;
 }
 
-const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, onRestore, onHardReset, onDeleteCurrentSaga, onUpdateAutoSync }) => {
+const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ 
+  appState, 
+  onRestore, 
+  onHardReset, 
+  onDeleteCurrentSaga, 
+  onUpdateAutoSync,
+  onFullSync
+}) => {
   const { showConfirm } = useDialog();
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'loading', message: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -232,6 +240,21 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
     }
   };
 
+  const handleFullTwoWaySync = async () => {
+    if (!onFullSync) return;
+    setIsLoading(true);
+    setStatus({ type: 'loading', message: 'Executing Full Two-Way Sync...' });
+    try {
+      await onFullSync();
+      setStatus({ type: 'success', message: 'SUCCESS! Cloud matches Local, and Local updated with latest Cloud data.' });
+    } catch (err: any) {
+      console.error('Full Sync Error:', err);
+      setStatus({ type: 'error', message: `Full sync failed: ${err.message}` });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-700">
       <div className="dbz-card p-10 relative overflow-hidden manga-shadow bg-surface/90 backdrop-blur-md border-primary/20 space-y-8">
@@ -349,14 +372,24 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({ appState, o
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <button 
             onClick={handleSupabaseSync}
             disabled={isLoading}
             className="w-full py-8 bg-secondary/10 border-2 border-secondary/30 text-secondary font-headline font-black italic uppercase tracking-widest rounded-2xl hover:bg-secondary/20 transition-all flex flex-col items-center justify-center gap-3 disabled:opacity-50 manga-skew group"
           >
             <IconDatabase size={24} className="manga-skew-reverse group-hover:scale-110 transition-transform" />
-            <span className="text-[11px] manga-skew-reverse">Sync From Cloud</span>
+            <span className="text-[11px] manga-skew-reverse">Pull From Cloud</span>
+          </button>
+
+          <button 
+            onClick={handleFullTwoWaySync}
+            disabled={isLoading || !onFullSync}
+            className="w-full py-8 bg-aura-gold/10 border-2 border-aura-gold/30 text-aura-gold font-headline font-black italic uppercase tracking-widest rounded-2xl hover:bg-aura-gold/20 transition-all flex flex-col items-center justify-center gap-3 disabled:opacity-50 manga-skew group relative overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-aura-gold/5 animate-pulse pointer-events-none" />
+            <IconRefresh size={24} className="manga-skew-reverse group-hover:rotate-180 transition-transform duration-700" />
+            <span className="text-[11px] manga-skew-reverse">Full Sync</span>
           </button>
 
           <button 

@@ -29,6 +29,64 @@
   --font-headline: "Space Grotesk", sans-serif;
   --font-body: "Be Vietnam Pro", sans-serif;
   --font-label: "Space Grotesk", sans-serif;
+
+  /* Imported from index.html CDN config */
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-850: #1f1f23;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+
+  --color-aura-orange: #FF6200;
+  --color-aura-gold: #FFD700;
+  --color-aura-purple: #7c3aed;
+  --color-aura-magenta: #d946ef;
+  --color-aura-cyan: #22d3ee;
+  --color-aura-red: #ef4444; 
+  --color-aura-white: #F8FAFC;
+  --color-aura-navy: #1e1b4b;
+
+  --color-pickle-400: #FF6200;
+  --color-pickle-500: #EA580C;
+  --color-pickle-600: #C2410C;
+
+  --color-hype-400: #FFD700;
+  --color-hype-500: #FF6200;
+  --color-hype-600: #9333ea;
+  
+  --color-danger-500: #DC2626;
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-aura-pulse: auraPulse 2s infinite;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-shake: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  --animate-shimmer: shimmer 2s linear infinite;
+
+  @keyframes auraPulse {
+    0%, 100% { box-shadow: 0 0 10px currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 25px currentColor; opacity: 0.9; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
 }
 
 :root {

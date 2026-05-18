@@ -115,9 +115,16 @@ export async function addDoublesMatch({
  * Upsert multiple matches
  */
 export async function upsertMatches(matches: any[]) {
+  if (!matches || matches.length === 0) return null;
+
+  // Deduplicate by ID to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const uniqueMatches = Array.from(
+    new Map(matches.map(m => [m.id, m])).values()
+  )
+
   const { data, error } = await supabase
     .from('matches')
-    .upsert(matches.map(m => ({
+    .upsert(uniqueMatches.map(m => ({
       id: m.id,
       league_id: m.leagueId,
       day_id: m.dayId,

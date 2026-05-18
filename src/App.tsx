@@ -27,12 +27,14 @@ import PlayerStatsHub from './components/PlayerStatsHub';
 import BackupRestoreManager from './components/BackupRestoreManager';
 import { useDialog } from './components/ui/DialogProvider';
 import { IconLock } from './components/ui/Icons';
+import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(loadState());
   const [isRestoring, setIsRestoring] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'league' | 'roster' | 'leaderboards' | 'stats' | 'backup'>('home');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
   // THEME STATE (Forced Dark Mode)
   const isDarkMode = true;
@@ -64,9 +66,10 @@ const App: React.FC = () => {
   // --- GLOBAL AUTO-BACKUP EFFECT ---
   // Debounced sync for "everything auto backed up"
   const performGlobalSync = useCallback(async () => {
-    if (isRestoring || isResettingRef.current) return;
+    if (isRestoring || isResettingRef.current || isOffline) return;
     
     setSyncStatus('syncing');
+    console.log("🔄 SYNC START: Pushing local changes...");
     try {
         // 1. Sync Players
         if (stateRef.current.players.length > 0) {
@@ -97,12 +100,12 @@ const App: React.FC = () => {
         }
 
         setSyncStatus('synced');
-        console.log("⚡ GLOBAL AUTO-BACKUP COMPLETE");
+        console.log("⚡ SYNC COMPLETE: Local data is now authoritative in Cloud");
     } catch (err) {
-        console.error("❌ Global backup failed:", err);
+        console.error("❌ Sync failed:", err);
         setSyncStatus('error');
     }
-  }, [isRestoring]);
+  }, [isRestoring, isOffline]);
 
   useEffect(() => {
     if (isRestoring || isResettingRef.current) return;
@@ -115,122 +118,117 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleOnline = () => {
         console.log("🌐 Network back online, triggering sync...");
+        setIsOffline(false);
         performGlobalSync();
+        
+        // Retry pending matches
+        const pending = localStorage.getItem('pbz_pending_matches');
+        if (pending) {
+            try {
+                const matches = JSON.parse(pending);
+                if (matches.length > 0) {
+                    console.log(`🔄 Retrying ${matches.length} pending matches...`);
+                    upsertMatches(matches).then(() => {
+                        localStorage.removeItem('pbz_pending_matches');
+                    });
+                }
+            } catch (e) {}
+        }
+    };
+    const handleOffline = () => {
+        console.log("📶 Network offline");
+        setIsOffline(true);
     };
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+    };
   }, [performGlobalSync]);
 
   // --- SUPABASE-FIRST BOOT SEQUENCE ---
   const bootSequence = useCallback(async (retryCount = 0) => {
+    if (isOffline) {
+        setSyncStatus('offline');
+        setIsLeagueLoading(false);
+        return;
+    }
+
     setSyncStatus('syncing'); 
     try {
-        // Create a timeout for the entire boot sequence - increased to 30s
-        const bootPromise = (async () => {
-            // 1. Fetch Players from Supabase
-            const players = await getPlayers();
-            
-            // 2. Fetch Active League from Supabase
-            const rawLeague = await getActiveLeague().catch(() => null);
-            
-            // Repair isCustom property in days array if missing
-            const league = rawLeague ? {
-                ...rawLeague,
-                days: (rawLeague.days || []).map((day: any) => ({
-                    ...day,
-                    matches: (day.matches || []).map((match: any) => ({
-                        ...match,
-                        isCustom: match.isCustom || match.is_custom || (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) || false,
-                        timestamp: match.timestamp || (match.events && Array.isArray(match.events) && match.events.find((e: any) => e.type === 'custom_marker')?.timestamp) || null
-                    }))
+        console.log("🚀 BOOT: Pulling latest data from Supabase...");
+        
+        // 1. Fetch data with Individual Try-Catch for Robustness
+        let players: Player[] = [];
+        let league: League | null = null;
+        let allLeagues: League[] = [];
+        let tournament: Tournament | null = null;
+        let session: Session | null = null;
+
+        try { players = await getPlayers().catch(e => { console.warn("Player fetch failed", e); return []; }); } catch(e) {}
+        try { league = await getActiveLeague().catch(e => { console.warn("Active league fetch failed", e); return null; }); } catch(e) {}
+        try { allLeagues = await getAllLeagues().catch(e => { console.warn("All leagues fetch failed", e); return []; }); } catch(e) {}
+        try { tournament = await getActiveTournament().catch(e => { console.warn("Tournament fetch failed", e); return null; }); } catch(e) {}
+        try { session = await getLatestSession().catch(e => { console.warn("Session fetch failed", e); return null; }); } catch(e) {}
+
+        // Repair mappings
+        const repairedLeague = league ? {
+            ...league,
+            days: (league.days || []).map((day: any) => ({
+                ...day,
+                matches: (day.matches || []).map((match: any) => ({
+                    ...match,
+                    isCustom: match.isCustom || match.is_custom || (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) || false,
+                    timestamp: match.timestamp || (match.events && Array.isArray(match.events) && match.events.find((e: any) => e.type === 'custom_marker')?.timestamp) || null
                 }))
-            } : null;
+            }))
+        } : null;
 
-            setSupabaseLeague(league);
-            console.log("🏆 ACTIVE LEAGUE FETCHED:", league?.name);
-
-            // 3. Fetch All Leagues (to populate past leagues)
-            const rawAllLeagues = await getAllLeagues().catch(() => []);
-            const allLeagues = rawAllLeagues.map((l: any) => ({
+        const otherLeagues = allLeagues
+            .filter((l: any) => l.id !== repairedLeague?.id)
+            .map((l: any) => ({
                 ...l,
                 days: (l.days || []).map((day: any) => ({
                     ...day,
                     matches: (day.matches || []).map((match: any) => ({
                         ...match,
-                        isCustom: match.isCustom || match.is_custom || (match.events && Array.isArray(match.events) && match.events.some((e: any) => e.type === 'custom_marker')) || false,
-                        timestamp: match.timestamp || (match.events && Array.isArray(match.events) && match.events.find((e: any) => e.type === 'custom_marker')?.timestamp) || null
+                        isCustom: match.isCustom || match.is_custom || false,
+                        timestamp: match.timestamp || null
                     }))
                 }))
             }));
 
-            const pastLeagues = allLeagues.filter((l: any) => l.id !== league?.id);
-            console.log("📚 OTHER LEAGUES FETCHED:", pastLeagues.length, pastLeagues.map(l => l.name));
+        setSupabaseLeague(repairedLeague);
 
-            // 4. Fetch Active Tournament
-            const tournament = await getActiveTournament().catch(() => null);
-            
-            // 5. Fetch Latest Session
-            const session = await getLatestSession().catch(() => null);
-
-            return { players, league, pastLeagues, tournament, session };
-        })();
-
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Boot Sequence Timeout')), 30000)
-        );
-
-        const { players, league, pastLeagues, tournament, session } = await Promise.race([bootPromise, timeoutPromise]) as any;
-
-        // 4. Hydrate Local State
+        // Hydrate Local State
         setState(prev => {
-            // Merge players: Prefer the version with more games played to avoid overwriting local stats with empty cloud data
-            const mergedPlayers = [...prev.players];
+            // MERGE LOGIC: Prefer Supabase as Authority (unless offline data exists and is newer)
+            // But for PBZ, Supabase is usually the source of truth
             
+            const mergedPlayers = [...prev.players];
             (players || []).forEach(sp => {
                 const localIdx = mergedPlayers.findIndex(p => p.id === sp.id);
                 if (localIdx === -1) {
-                    // Always add from Supabase if not present locally
                     mergedPlayers.push(sp);
                 } else {
-                    const localPlayer = mergedPlayers[localIdx];
-                    const spGames = sp.gamesPlayed || sp.games_played || 0;
-                    const localGames = localPlayer.gamesPlayed || (localPlayer.stats?.wins || 0) + (localPlayer.stats?.losses || 0);
-                    
-                    // If Supabase has more or equal games, or if local is empty, use Supabase
-                    if (spGames >= localGames) {
-                        mergedPlayers[localIdx] = sp;
-                    }
+                    // Update existing
+                    mergedPlayers[localIdx] = sp;
                 }
             });
 
-            // --- CLEANUP: Deduplicate by name and remove empty "extra" players ---
+            // Cleanup duplicates by name
             const cleanedPlayers = mergedPlayers.reduce((acc: Player[], current) => {
                 const normalizedName = current.name?.toLowerCase().trim() || "";
                 if (!normalizedName) return acc;
-
                 const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName);
-                
-                // Calculate total games across all possible stat fields
-                const currentGames = (current.gamesPlayed || 0) + 
-                                   (current.wins || 0) + 
-                                   (current.losses || 0) +
-                                   (current.stats?.wins || 0) + 
-                                   (current.stats?.losses || 0);
-                
                 if (!existing) {
                     acc.push(current);
                 } else {
-                    // If duplicate name, keep the one with more games/stats or the one in the active league
-                    const existingGames = (existing.gamesPlayed || 0) + 
-                                        (existing.wins || 0) + 
-                                        (existing.losses || 0) +
-                                        (existing.stats?.wins || 0) + 
-                                        (existing.stats?.losses || 0);
-                    
-                    const existingInActive = league?.players?.some((p: any) => String(p.id) === String(existing.id));
-                    const currentInActive = league?.players?.some((p: any) => String(p.id) === String(current.id));
-                    
-                    if (currentGames > existingGames || (currentInActive && !existingInActive)) {
+                    // Keep the one with more stats
+                    const currentGames = (current.gamesPlayed || 0) + (current.stats?.wins || 0) + (current.stats?.losses || 0);
+                    const existingGames = (existing.gamesPlayed || 0) + (existing.stats?.wins || 0) + (existing.stats?.losses || 0);
+                    if (currentGames > existingGames) {
                         const idx = acc.indexOf(existing);
                         acc[idx] = current;
                     }
@@ -238,54 +236,164 @@ const App: React.FC = () => {
                 return acc;
             }, []);
 
-            // Merge past leagues
-            const mergedPastLeagues = [...(prev.pastLeagues || [])];
-            (pastLeagues || []).forEach(sl => {
-                const localIdx = mergedPastLeagues.findIndex(l => l.id === sl.id);
-                if (localIdx === -1) {
-                    mergedPastLeagues.push(sl);
-                } else {
-                    // Prefer Supabase if it has more data (e.g. finalStandings)
-                    const spData = sl.finalStandings?.length || 0;
-                    const localData = mergedPastLeagues[localIdx].finalStandings?.length || 0;
-                    if (spData >= localData) {
-                        mergedPastLeagues[localIdx] = sl;
-                    }
-                }
-            });
-
-            const newState = {
+            return {
                 ...prev,
                 players: cleanedPlayers,
-                activeLeague: league || prev.activeLeague,
+                activeLeague: repairedLeague || prev.activeLeague,
                 activeTournament: tournament || prev.activeTournament,
                 activeSession: session || prev.activeSession,
-                pastLeagues: mergedPastLeagues.sort((a, b) => 
-                    new Date(b.createdAt || b.created_at || 0).getTime() - 
-                    new Date(a.createdAt || a.created_at || 0).getTime()
+                pastLeagues: otherLeagues.sort((a, b) => 
+                    new Date(b.created_at || 0).getTime() - 
+                    new Date(a.created_at || 0).getTime()
                 )
             };
-            console.log("🔄 STATE HYDRATED:", newState.players.length, "players,", newState.pastLeagues.length, "past leagues");
-            return newState;
         });
 
         setSyncStatus('synced');
+        console.log("✅ BOOT COMPLETE: Hydrated from Cloud");
     } catch (e) {
         console.error(`Saga Boot Error (Attempt ${retryCount + 1}):`, e);
-        if (retryCount < 2) {
-            // Retry after 3 seconds
+        if (retryCount < 2 && !isOffline) {
             setTimeout(() => bootSequence(retryCount + 1), 3000);
         } else {
-            setSyncStatus('offline');
+            setSyncStatus(isOffline ? 'offline' : 'error');
         }
     } finally {
         setIsLeagueLoading(false);
     }
-  }, []);
+  }, [isOffline]);
+
+  const handleFullTwoWaySync = useCallback(async () => {
+    if (isOffline) return;
+    setSyncStatus('syncing');
+    try {
+        // 1. Push local changes first
+        await performGlobalSync();
+        // 2. Pull latest from cloud
+        await bootSequence();
+        setSyncStatus('synced');
+    } catch (e) {
+        setSyncStatus('error');
+    }
+  }, [isOffline, performGlobalSync, bootSequence]);
 
   useEffect(() => {
     bootSequence();
   }, [bootSequence]);
+
+  // --- ACTIVE SAGA REALTIME SYNC (For Spectators) ---
+  useEffect(() => {
+    if (!state.activeLeague?.id) return;
+
+    const leagueId = state.activeLeague.id;
+    
+    // Listen to ALL league changes for the active saga
+    const leaguesChannel = supabase
+      .channel(`active-saga-${leagueId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leagues',
+          filter: `id=eq.${leagueId}`
+        },
+        (payload: any) => {
+          console.log("🏆 CLOUD SAGA UPDATE DETECTED:", payload.new?.name || payload.old?.id);
+          if (payload.eventType === 'DELETE') {
+             setState(prev => ({ ...prev, activeLeague: null }));
+             return;
+          }
+          
+          setState(prev => {
+            if (prev.activeLeague?.id === payload.new.id) {
+                const updatedLeague: League = {
+                    ...prev.activeLeague,
+                    ...payload.new,
+                    days: (payload.new.days || []).map((day: any) => ({
+                        ...day,
+                        matches: (day.matches || []).map((match: any) => ({
+                            ...match,
+                            isCustom: match.isCustom || match.is_custom || false,
+                            timestamp: match.timestamp || null
+                        }))
+                    }))
+                };
+                return { ...prev, activeLeague: updatedLeague };
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    // Listen to ALL matches for the active saga
+    const matchesChannel = supabase
+      .channel(`saga-matches-${leagueId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'matches',
+          filter: `league_id=eq.${leagueId}`
+        },
+        () => {
+           console.log("🎾 MATCH UPDATE DETECTED - Refreshing Saga...");
+           // For matches, we re-fetch the league to get the updated nested structure
+           // This ensures all derived stats are correct
+           getActiveLeague().then(repairedLeague => {
+               if (repairedLeague) {
+                   setState(prev => ({ 
+                       ...prev, 
+                       activeLeague: {
+                           ...prev.activeLeague,
+                           ...repairedLeague,
+                           days: (repairedLeague.days || []).map((day: any) => ({
+                               ...day,
+                               matches: (day.matches || []).map((match: any) => ({
+                                   ...match,
+                                   isCustom: match.isCustom || match.is_custom || false,
+                                   timestamp: match.timestamp || null
+                               }))
+                           }))
+                       } as League
+                   }));
+               }
+           });
+        }
+      )
+      .subscribe();
+
+    // Listen to ALL player updates to keep roster in sync (DB, Dragon Balls, etc)
+    const playersChannel = supabase
+      .channel('global-roster')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'players'
+        },
+        (payload) => {
+          console.log("👤 PLAYER UPDATE DETECTED:", payload.eventType);
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+            import('./services/queryService').then(({ getPlayers }) => {
+              getPlayers().then(roster => {
+                setState(prev => ({ ...prev, players: roster }));
+              });
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(leaguesChannel);
+      supabase.removeChannel(matchesChannel);
+      supabase.removeChannel(playersChannel);
+    };
+  }, [state.activeLeague?.id]);
 
   // --- REMOVED LEGACY HEARTBEAT ---
 
@@ -915,10 +1023,11 @@ const App: React.FC = () => {
 
       // SYNC TO SUPABASE
       const syncToSupabase = async () => {
+          const matchData = { ...matches[matchIndex], leagueId: nextLeague.id, dayId: day.id };
           try {
               setSyncStatus('syncing');
               // 1. Sync individual match record (for leaderboard and cross-device views)
-              await upsertMatches([{ ...matches[matchIndex], leagueId: nextLeague.id, dayId: day.id }]);
+              await upsertMatches([matchData]);
 
               // 2. Sync the entire league state (to preserve the match score in the league days/matches JSONB)
               await upsertLeagues([nextLeague]);
@@ -929,8 +1038,13 @@ const App: React.FC = () => {
               setSyncStatus('synced');
               console.log("✅ Match and League state synced to Supabase");
           } catch (err) {
-              console.error("❌ Supabase sync failed:", err);
+              console.error("❌ Supabase sync failed, saving to fallback:", err);
               setSyncStatus('error');
+              
+              // Local Fallback
+              const pending = JSON.parse(localStorage.getItem('pbz_pending_matches') || '[]');
+              pending.push(matchData);
+              localStorage.setItem('pbz_pending_matches', JSON.stringify(pending));
           }
       };
 
@@ -1026,6 +1140,7 @@ const App: React.FC = () => {
                 onHardReset={handleHardReset}
                 onDeleteCurrentSaga={handleDeleteCurrentSaga}
                 onUpdateAutoSync={(enabled) => setState(prev => ({ ...prev, autoSync: enabled }))}
+                onFullSync={handleFullTwoWaySync}
             />
           ) : (
             <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
@@ -1069,9 +1184,10 @@ const App: React.FC = () => {
         onAppStateRestore={handleRestoreState}
         onHardReset={handleHardReset}
         syncStatus={syncStatus}
-        onRetrySync={bootSequence}
+        onRetrySync={handleFullTwoWaySync}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
+        isOffline={isOffline}
         actions={
             isAdmin ? (
                 <button 

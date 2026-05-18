@@ -721,12 +721,14 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                             <IconUsers size={12} /> MANAGE SQUAD
                         </button>
                     )}
-                    <button 
-                        onClick={() => setShowCustomMatchModal(true)}
-                        className="bg-primary/10 text-primary hover:bg-primary/20 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2"
-                    >
-                        <IconPlus size={12} /> CUSTOM MATCH
-                    </button>
+                    {isAdmin && (
+                      <button 
+                          onClick={() => setShowCustomMatchModal(true)}
+                          className="bg-primary/10 text-primary hover:bg-primary/20 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2"
+                      >
+                          <IconPlus size={12} /> CUSTOM MATCH
+                      </button>
+                    )}
                     <button 
                         onClick={handleExportPDF}
                         className="bg-white text-black hover:bg-zinc-200 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_10px_20px_rgba(255,255,255,0.1)] active:scale-95 transition-all"
@@ -1091,6 +1093,7 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                     onSave={handleSaveCustomMatch}
                     onCancel={() => setShowCustomMatchModal(false)}
                     isDarkMode={isDarkMode}
+                    onUpdateDragonBalls={onUpdateDragonBalls}
                 />
             )}
         </AnimatePresence>

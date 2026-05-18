@@ -9,7 +9,7 @@ export async function getPlayerProfile(playerId: string) {
     .from('players')
     .select('*')
     .eq('id', playerId)
-    .single()
+    .maybeSingle()
   
   if (playerError) throw playerError
 

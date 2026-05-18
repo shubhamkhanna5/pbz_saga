@@ -107,6 +107,14 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ players, onClose, trophyHolde
                         <td className="p-5">
                           <div className="flex items-center gap-3">
                             <span className={`font-headline font-black italic uppercase tracking-tight transform -skew-x-6 text-lg ${isTop3 ? 'text-on-surface' : 'text-on-surface-variant/60'}`}>{p.name}</span>
+                            {(p.dragonBalls || p.dragon_balls) ? (
+                              <div className="flex items-center gap-0.5 ml-1">
+                                {Array.from({ length: Math.min(7, (p.dragonBalls || p.dragon_balls || 0)) }).map((_, i) => (
+                                  <span key={i} className="text-xs drop-shadow-[0_0_5px_rgba(255,140,0,0.6)]">🟠</span>
+                                ))}
+                                {(p.dragonBalls || p.dragon_balls || 0) > 7 && <span className="text-[10px] font-black text-aura-gold">+{(p.dragonBalls || p.dragon_balls || 0) - 7}</span>}
+                              </div>
+                            ) : null}
                             {p.id === trophyHolderId && <IconTrophy size={16} className="text-primary animate-pulse drop-shadow-[0_0_8px_rgba(255,140,0,0.5)]" />}
                             {(p.currentStreak ?? p.stats?.currentStreak ?? 0) >= 3 && <IconZap size={14} className="text-secondary animate-bounce" />}
                           </div>

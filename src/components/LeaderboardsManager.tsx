@@ -23,20 +23,7 @@ interface LeaderboardsManagerProps {
 
 type Tab = 'league' | 'live';
 
-// Hardcoded data for Saiyan Saga (p30d9dm1x)
-const SAIYAN_SAGA_HARDCODED_STANDINGS = [
-  { playerId: "oe3skdcma", points: 88.4, wins: 24, losses: 10, gamesPlayed: 34, ppg: 2.60, bonusPoints: 3, noShows: 1, eligibleForTrophies: true, elo: 1250 },
-  { playerId: "awqcz4mq6", points: 68.0, wins: 17, losses: 10, gamesPlayed: 27, ppg: 2.52, bonusPoints: 1, noShows: 0, eligibleForTrophies: true, elo: 1220 },
-  { playerId: "fuowaw9d0", points: 67.2, wins: 16, losses: 11, gamesPlayed: 27, ppg: 2.49, bonusPoints: 3, noShows: 0, eligibleForTrophies: true, elo: 1215 },
-  { playerId: "d7xlrfvdn", points: 64.8, wins: 17, losses: 10, gamesPlayed: 27, ppg: 2.40, bonusPoints: 2, noShows: 3, eligibleForTrophies: true, elo: 1210 },
-  { playerId: "mrauy20h3", points: 59.8, wins: 16, losses: 10, gamesPlayed: 26, ppg: 2.30, bonusPoints: 2, noShows: 1, eligibleForTrophies: true, elo: 1205 },
-  { playerId: "4p4zbvg98", points: 33.8, wins: 10, losses: 3, gamesPlayed: 13, ppg: 2.60, bonusPoints: 1, noShows: 1, eligibleForTrophies: false, elo: 1240 },
-  { playerId: "uynls38wb", points: 90.3, wins: 24, losses: 19, gamesPlayed: 43, ppg: 2.10, bonusPoints: 6, noShows: 0, eligibleForTrophies: true, elo: 1180 },
-  { playerId: "22rjubyro", points: 56.0, wins: 12, losses: 16, gamesPlayed: 28, ppg: 2.00, bonusPoints: 1, noShows: 0, eligibleForTrophies: true, elo: 1170 },
-  { playerId: "8aic760jt", points: 50.6, wins: 11, losses: 21, gamesPlayed: 32, ppg: 1.58, bonusPoints: 8, noShows: 0, eligibleForTrophies: true, elo: 1150 },
-  { playerId: "z64w1cs7r", points: 60.8, wins: 10, losses: 30, gamesPlayed: 40, ppg: 1.52, bonusPoints: 5, noShows: 2, eligibleForTrophies: true, elo: 1140 }
-];
-
+// Hardcoded data removed
 const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
   players,
   activeLeague,
@@ -134,18 +121,18 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
 
     const targetLeague = uniqueLeagues.find(l => l.id === selectedLeagueId) || uniqueLeagues[0];
     
-    // ✅ USE SUPABASE DATA INSTEAD OF LOCAL RECOMPUTATION
+    // USE SUPABASE DATA INSTEAD OF LOCAL RECOMPUTATION
     const isTargetActive = activeLeague && targetLeague.id === activeLeague.id;
     
-    // Hardcoded override for Saiyan Saga
     let rawStandings = [];
-    if (targetLeague.id === 'p30d9dm1x') {
-        rawStandings = SAIYAN_SAGA_HARDCODED_STANDINGS;
+    if (isTargetActive && liveLeaderboard.length > 0) {
+        // Favor the realtime hook for active saga - it's the most accurate live view
+        rawStandings = liveLeaderboard;
     } else if (isTargetActive && localActiveStandings.length > 0) {
         rawStandings = localActiveStandings;
     } else {
         rawStandings = isTargetActive 
-          ? (liveLeaderboard.length > 0 ? liveLeaderboard : (targetLeague.finalStandings || []))
+          ? (targetLeague.finalStandings || [])
           : (pastStandings.length > 0 ? pastStandings : (targetLeague.finalStandings || []));
     }
 
@@ -166,6 +153,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
         points,
         ppg,
         gamesPlayed,
+        dragonBalls: p.dragonBalls || p.dragon_balls || 0,
         elo: p.elo || 1200,
         eligibleForTrophies: true,
         ppgHistory: []
@@ -183,6 +171,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
                 points: 0,
                 ppg: 0,
                 gamesPlayed: 0,
+                dragonBalls: p?.dragonBalls || p?.dragon_balls || 0,
                 elo: 1200,
                 eligibleForTrophies: false,
                 ppgHistory: []
@@ -445,16 +434,30 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
         );
     }
 
-    const displayLeaderboard = activeLeague && localActiveStandings.length > 0
-        ? localActiveStandings.map(s => ({
-            playerId: s.playerId,
-            name: players.find(pl => pl.id === s.playerId)?.name || s.playerId,
-            points: s.points,
-            gamesPlayed: s.gamesPlayed,
-            wins: s.wins,
-            ppg: s.ppg
+    // In renderLive, we are always looking at the active saga
+    const hasLiveStats = liveLeaderboard && liveLeaderboard.length > 0;
+    
+    const displayLeaderboard = hasLiveStats
+        ? liveLeaderboard.map(p => ({
+            playerId: p.playerId || p.player_id,
+            name: p.name || players.find(pl => pl.id === (p.playerId || p.player_id))?.name || 'Unknown',
+            points: p.points || p.totalPoints || p.total_points || 0,
+            gamesPlayed: p.gamesPlayed || p.games_played || 0,
+            wins: p.wins || 0,
+            ppg: p.ppg || 0,
+            elo: p.elo || 1200
           }))
-        : (liveLeaderboard || []);
+        : (activeLeague && localActiveStandings.length > 0
+            ? localActiveStandings.map(s => ({
+                playerId: s.playerId,
+                name: players.find(pl => pl.id === s.playerId)?.name || s.playerId,
+                points: s.points,
+                gamesPlayed: s.gamesPlayed,
+                wins: s.wins,
+                ppg: s.ppg,
+                elo: s.elo
+              }))
+            : (liveLeaderboard || []));
 
     const sortedLive = [...displayLeaderboard]
         .map(p => {

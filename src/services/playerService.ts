@@ -25,7 +25,7 @@ export async function getPlayerById(playerId: string) {
     .from('players')
     .select('*')
     .eq('id', playerId)
-    .single()
+    .maybeSingle()
 
   return data
 }
@@ -34,9 +34,16 @@ export async function getPlayerById(playerId: string) {
  * Upsert multiple players
  */
 export async function upsertPlayers(players: any[]) {
+  if (!players || players.length === 0) return null;
+
+  // Deduplicate by ID to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const uniquePlayers = Array.from(
+    new Map(players.map(p => [p.id, p])).values()
+  )
+
   const { data, error } = await supabase
     .from('players')
-    .upsert(players.map(p => ({
+    .upsert(uniquePlayers.map(p => ({
       id: p.id,
       name: p.name,
       skill: p.skill,

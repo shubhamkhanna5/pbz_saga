@@ -47,7 +47,16 @@ export function useRealtimeLeaderboard() {
           refreshLeaderboard()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime Channel Error: Attempting to reconnect...');
+          // Optional: trigger a manual refresh as fallback
+          refreshLeaderboard();
+        }
+        if (status === 'TIMED_OUT') {
+          console.warn('⚠️ Realtime Channel Timeout');
+        }
+      })
 
     return () => {
       subscription.unsubscribe()

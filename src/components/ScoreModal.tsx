@@ -172,13 +172,20 @@ const ScoreModal: React.FC<ScoreModalProps> = ({
                                 onUpdateDragonBalls(p.id, 1);
                                 setAwardedDBPlayers(prev => new Set(prev).add(p.id));
                               }}
-                              className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black transition-all ${
+                              className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black transition-all relative ${
                                 awardedDBPlayers.has(p.id)
                                   ? 'bg-zinc-800 text-zinc-600 border border-zinc-700 cursor-not-allowed opacity-50'
                                   : 'bg-aura-gold/20 text-aura-gold border border-aura-gold/40 hover:bg-aura-gold/40 hover:shadow-[0_0_15px_rgba(255,140,0,0.4)] active:bg-aura-gold active:text-black'
                               }`}
                             >
                               {awardedDBPlayers.has(p.id) ? '✓' : '+1DB'}
+                              {!awardedDBPlayers.has(p.id) && (
+                                <motion.div
+                                  className="absolute -top-1 -right-1 w-2 h-2 bg-aura-gold rounded-full"
+                                  animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                                  transition={{ repeat: Infinity, duration: 2 }}
+                                />
+                              )}
                             </motion.button>
                             <motion.button 
                               whileTap={{ scale: 0.8 }}
@@ -271,13 +278,20 @@ const ScoreModal: React.FC<ScoreModalProps> = ({
                                 onUpdateDragonBalls(p.id, 1);
                                 setAwardedDBPlayers(prev => new Set(prev).add(p.id));
                               }}
-                              className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black transition-all ${
+                              className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black transition-all relative ${
                                 awardedDBPlayers.has(p.id)
                                   ? 'bg-zinc-800 text-zinc-600 border border-zinc-700 cursor-not-allowed opacity-50'
                                   : 'bg-aura-gold/20 text-aura-gold border border-aura-gold/40 hover:bg-aura-gold/40 hover:shadow-[0_0_15px_rgba(255,140,0,0.4)] active:bg-aura-gold active:text-black'
                               }`}
                             >
                               {awardedDBPlayers.has(p.id) ? '✓' : '+1DB'}
+                              {!awardedDBPlayers.has(p.id) && (
+                                <motion.div
+                                  className="absolute -top-1 -right-1 w-2 h-2 bg-aura-gold rounded-full"
+                                  animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                                  transition={{ repeat: Infinity, duration: 2 }}
+                                />
+                              )}
                             </motion.button>
                             <motion.button 
                               whileTap={{ scale: 0.8 }}

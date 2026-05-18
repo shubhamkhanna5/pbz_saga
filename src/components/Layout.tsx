@@ -21,9 +21,10 @@ interface LayoutWithSyncProps extends LayoutProps {
     onHardReset?: () => void;
     isDarkMode: boolean;
     onToggleDarkMode: () => void;
+    isOffline?: boolean;
 }
 
-const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate, isAdmin, actions, title, appState, onAppStateRestore, syncStatus, onRetrySync, onHardReset, isDarkMode, onToggleDarkMode }) => {
+const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate, isAdmin, actions, title, appState, onAppStateRestore, syncStatus, onRetrySync, onHardReset, isDarkMode, onToggleDarkMode, isOffline }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
@@ -80,9 +81,15 @@ const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate
       </header>
 
       {/* Sync Status Indicator */}
-      {syncStatus && (
-        <div className="fixed top-[calc(env(safe-area-inset-top)+0.8rem)] right-24 z-[60]">
-            <SyncStatusPill status={syncStatus} onRetry={onRetrySync} />
+      {(syncStatus || isOffline) && (
+        <div className="fixed top-[calc(env(safe-area-inset-top)+0.8rem)] right-24 z-[60] flex items-center gap-2">
+            {isOffline && (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-red-900/40 border border-red-500/30 rounded-full shadow-lg backdrop-blur-md animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                <span className="text-[8px] font-black text-red-100 uppercase tracking-widest">No Signal</span>
+              </div>
+            )}
+            {syncStatus && <SyncStatusPill status={syncStatus} onRetry={onRetrySync} />}
         </div>
       )}
 
