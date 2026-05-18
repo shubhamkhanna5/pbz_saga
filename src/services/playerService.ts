@@ -86,6 +86,8 @@ export async function syncFullRoster(players: any[]) {
   await upsertPlayers(players);
   
   // 2. Delete players from Supabase that are not in this list
+  // ⚠️ DANGEROUS DELETE: Disabled as per recovery requirements to prevent foreign key constraint errors
+  /*
   const currentPlayerIds = players.map(p => p.id);
   if (currentPlayerIds.length > 0) {
     const { error } = await supabase
@@ -98,6 +100,7 @@ export async function syncFullRoster(players: any[]) {
       // We don't throw here to avoid failing the whole sync if cleanup fails
     }
   }
+  */
 }
 
 /**

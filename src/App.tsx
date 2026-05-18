@@ -66,7 +66,8 @@ const App: React.FC = () => {
   // --- GLOBAL AUTO-BACKUP EFFECT ---
   // Debounced sync for "everything auto backed up"
   const performGlobalSync = useCallback(async () => {
-    if (isRestoring || isResettingRef.current || isOffline) return;
+    const manualRestore = localStorage.getItem("manual_restore") === "true";
+    if (isRestoring || isResettingRef.current || isOffline || manualRestore) return;
     
     setSyncStatus('syncing');
     console.log("🔄 SYNC START: Pushing local changes...");
@@ -101,6 +102,12 @@ const App: React.FC = () => {
 
         setSyncStatus('synced');
         console.log("⚡ SYNC COMPLETE: Local data is now authoritative in Cloud");
+
+        // ✅ AUTO-CLEAR MANUAL RESTORE: After a successful authoritative push, we return to cloud-first
+        if (localStorage.getItem("manual_restore") === "true") {
+            console.log("✨ Authoritative push successful. Disabling manual_restore flag.");
+            localStorage.removeItem("manual_restore");
+        }
     } catch (err) {
         console.error("❌ Sync failed:", err);
         setSyncStatus('error');
@@ -157,6 +164,14 @@ const App: React.FC = () => {
 
     setSyncStatus('syncing'); 
     try {
+        const manualRestore = localStorage.getItem("manual_restore") === "true";
+        if (manualRestore) {
+            console.warn("⚠️ MANUAL RESTORE MODE: Cloud hydration skipped to protect local state.");
+            setSyncStatus('manual');
+            setIsLeagueLoading(false);
+            return;
+        }
+
         console.log("🚀 BOOT: Pulling latest data from Supabase...");
         
         // 1. Fetch data with Individual Try-Catch for Robustness
@@ -376,6 +391,9 @@ const App: React.FC = () => {
           table: 'players'
         },
         (payload) => {
+          const manualRestore = localStorage.getItem("manual_restore") === "true";
+          if (manualRestore) return;
+          
           console.log("👤 PLAYER UPDATE DETECTED:", payload.eventType);
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
             import('./services/queryService').then(({ getPlayers }) => {

@@ -36,6 +36,24 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
   const [showManualJson, setShowManualJson] = useState(false);
   const [manualJson, setManualJson] = useState('');
   const [recoveryData, setRecoveryData] = useState<{ key: string, date: string }[]>([]);
+  const [isManualMode, setIsManualMode] = useState(localStorage.getItem("manual_restore") === "true");
+
+  const toggleManualMode = () => {
+    const newValue = !isManualMode;
+    if (newValue) {
+      localStorage.setItem("manual_restore", "true");
+    } else {
+      localStorage.removeItem("manual_restore");
+    }
+    setIsManualMode(newValue);
+    setStatus({ 
+      type: newValue ? 'success' : 'loading', 
+      message: newValue ? 'Manual Restore Mode ENABLED. Cloud overwrites paused.' : 'Manual Restore Mode DISABLED. Refreshing from cloud...' 
+    });
+    if (!newValue && onFullSync) {
+        onFullSync();
+    }
+  };
 
   // Check for old database versions in localStorage
   React.useEffect(() => {
@@ -64,9 +82,12 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
   };
 
   const handleManualRestore = () => {
-    if (!manualJson) return;
+    const rawInput = manualJson.trim();
+    if (!rawInput) return;
+    
     try {
-      const data = JSON.parse(manualJson);
+      // 1. Try direct parse
+      const data = JSON.parse(rawInput);
       
       // Flexible restore: if it's just a players array, wrap it in a partial state
       let targetState: any = data;
@@ -82,88 +103,132 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
       setStatus({ type: 'success', message: 'Successfully restored from manual JSON!' });
       setShowManualJson(false);
       setManualJson('');
-    } catch (err) {
+    } catch (err: any) {
       console.error("Manual Restore Error:", err);
-      setStatus({ type: 'error', message: 'Invalid JSON format. Please check your data.' });
+      
+      // If it looks like they pasted multiple objects or has trailing junk
+      if (err.message && err.message.includes('Unexpected non-whitespace character')) {
+          setStatus({ 
+            type: 'error', 
+            message: `JSON Error at position ${err.message.match(/\d+/)?.[0] || '?'}. Try removing any text before or after the JSON { } brackets.` 
+          });
+      } else {
+          setStatus({ type: 'error', message: `Invalid JSON: ${err.message || 'Check format'}` });
+      }
     }
   };
 
   const handleSupabaseSync = async () => {
-    setIsLoading(true);
-    setStatus({ type: 'loading', message: 'Syncing with Supabase...' });
-    try {
-      // Fetch players and active league from Supabase
-      const [players, activeLeague, allLeagues] = await Promise.all([
-        getPlayers(),
-        getActiveLeague(true).catch(() => null),
-        getAllLeagues().catch(() => [])
-      ]);
+    showConfirm("PULL FROM CLOUD?\n\nThis will OVERWRITE your local data with the latest version from Supabase. Use this to sync with other devices.", async () => {
+      setIsLoading(true);
+      setStatus({ type: 'loading', message: 'Syncing with Supabase...' });
+      try {
+        // Fetch players and active league from Supabase
+        const [players, activeLeague, allLeagues] = await Promise.all([
+          getPlayers(),
+          getActiveLeague(true).catch(() => null),
+          getAllLeagues().catch(() => [])
+        ]);
 
-      if (!players || players.length === 0) {
-        throw new Error('No players found in Supabase');
+        if (!players || players.length === 0) {
+          throw new Error('No players found in Supabase');
+        }
+
+        const pastLeagues = allLeagues.filter((l: any) => l.status === 'completed');
+
+        // ⚡ Robust Deduplication and Cleanup (Same as bootSequence)
+        const uniquePlayers = (players || []).reduce((acc: any[], current: any) => {
+            const normalizedName = current.name?.toLowerCase().trim() || "";
+            if (!normalizedName) return acc;
+
+            const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName || p.id === current.id);
+            
+            const currentGames = (current.gamesPlayed || 0) + 
+                               (current.wins || 0) + 
+                               (current.losses || 0) +
+                               (current.stats?.wins || 0) + 
+                               (current.stats?.losses || 0);
+            
+            if (!existing) {
+                acc.push(current);
+            } else {
+                const existingGames = (existing.gamesPlayed || 0) + 
+                                    (existing.wins || 0) + 
+                                    (existing.losses || 0) +
+                                    (existing.stats?.wins || 0) + 
+                                    (existing.stats?.losses || 0);
+                
+                const existingInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(existing.id));
+                const currentInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(current.id));
+                
+                if (currentGames > existingGames || (currentInActive && !existingInActive)) {
+                    const idx = acc.indexOf(existing);
+                    acc[idx] = current;
+                }
+            }
+            return acc;
+        }, []);
+
+        // Merge with current state or create new state
+        const newState: AppState = {
+          ...appState,
+          players: uniquePlayers.map((p: any) => ({
+            ...p,
+            isPresent: p.isPresent ?? true
+          })),
+          activeLeague: activeLeague ? {
+            ...activeLeague,
+            players: activeLeague.players || [],
+            days: activeLeague.days || []
+          } : null,
+          pastLeagues: pastLeagues.map((l: any) => ({
+            ...l,
+            players: l.players || [],
+            days: l.days || []
+          }))
+        };
+
+        onRestore(newState);
+        setStatus({ type: 'success', message: 'Successfully synced with Supabase!' });
+      } catch (err: any) {
+        console.error('Supabase Sync Error:', err);
+        setStatus({ type: 'error', message: `Sync failed: ${err.message}` });
+      } finally {
+        setIsLoading(false);
       }
+    });
+  };
 
-      const pastLeagues = allLeagues.filter((l: any) => l.status === 'completed');
+  const handlePushToSupabaseConfirm = async () => {
+    const localPlayersCount = appState.players.length;
+    const localMatchesCount = (appState.activeLeague?.days || []).flatMap(d => d.matches).length + 
+                             (appState.pastLeagues || []).flatMap(l => (l.days || [])).flatMap(d => d.matches).length;
+    
+    // Fetch info from cloud for comparison
+    setIsLoading(true);
+    setStatus({ type: 'loading', message: 'Analyzing Cloud State...' });
+    
+    try {
+        const [cloudPlayers, allLeagues] = await Promise.all([
+          getPlayers().catch(() => []),
+          getAllLeagues().catch(() => [])
+        ]);
 
-      // ⚡ Robust Deduplication and Cleanup (Same as bootSequence)
-      const uniquePlayers = (players || []).reduce((acc: any[], current: any) => {
-          const normalizedName = current.name?.toLowerCase().trim() || "";
-          if (!normalizedName) return acc;
+        const cloudMatchesCount = allLeagues.flatMap((l: any) => (l.days || [])).flatMap((d: any) => (d.matches || [])).length;
 
-          const existing = acc.find(p => p.name.toLowerCase().trim() === normalizedName || p.id === current.id);
-          
-          const currentGames = (current.gamesPlayed || 0) + 
-                             (current.wins || 0) + 
-                             (current.losses || 0) +
-                             (current.stats?.wins || 0) + 
-                             (current.stats?.losses || 0);
-          
-          if (!existing) {
-              acc.push(current);
-          } else {
-              const existingGames = (existing.gamesPlayed || 0) + 
-                                  (existing.wins || 0) + 
-                                  (existing.losses || 0) +
-                                  (existing.stats?.wins || 0) + 
-                                  (existing.stats?.losses || 0);
-              
-              const existingInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(existing.id));
-              const currentInActive = activeLeague?.players?.some((p: any) => String(p.id) === String(current.id));
-              
-              if (currentGames > existingGames || (currentInActive && !existingInActive)) {
-                  const idx = acc.indexOf(existing);
-                  acc[idx] = current;
-              }
-          }
-          return acc;
-      }, []);
-
-      // Merge with current state or create new state
-      const newState: AppState = {
-        ...appState,
-        players: uniquePlayers.map((p: any) => ({
-          ...p,
-          isPresent: p.isPresent ?? true
-        })),
-        activeLeague: activeLeague ? {
-          ...activeLeague,
-          players: activeLeague.players || [],
-          days: activeLeague.days || []
-        } : null,
-        pastLeagues: pastLeagues.map((l: any) => ({
-          ...l,
-          players: l.players || [],
-          days: l.days || []
-        }))
-      };
-
-      onRestore(newState);
-      setStatus({ type: 'success', message: 'Successfully synced with Supabase!' });
-    } catch (err: any) {
-      console.error('Supabase Sync Error:', err);
-      setStatus({ type: 'error', message: `Sync failed: ${err.message}` });
+        showConfirm(
+            `PUSH TO CLOUD?\n\nThis will make your LOCAL data the source of truth for ALL devices.\n\n` +
+            `COMPARISON:\n` +
+            `Players: Local (${localPlayersCount}) vs Cloud (${cloudPlayers.length})\n` +
+            `Matches: Local (${localMatchesCount}) vs Cloud (${cloudMatchesCount})\n\n` +
+            `Are you sure you want to overwrite cloud data?`,
+            () => handlePushToSupabase()
+        );
+    } catch (e) {
+        showConfirm("PUSH TO CLOUD?\n\n(Cloud comparison failed, but you can still force push). Are you sure?", () => handlePushToSupabase());
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
+        setStatus(null);
     }
   };
 
@@ -231,7 +296,13 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
         await upsertMatches(uniqueMatches);
       }
 
-      setStatus({ type: 'success', message: 'Successfully pushed all data to Supabase!' });
+      // ✅ CLEAR MANUAL RESTORE FLAG on successful manual push
+      if (localStorage.getItem("manual_restore") === "true") {
+          localStorage.removeItem("manual_restore");
+          setIsManualMode(false);
+      }
+
+      setStatus({ type: 'success', message: 'Successfully pushed all data to Supabase! Manual mode disabled.' });
     } catch (err: any) {
       console.error('Supabase Push Error:', err);
       setStatus({ type: 'error', message: `Push failed: ${err.message}` });
@@ -242,17 +313,52 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
 
   const handleFullTwoWaySync = async () => {
     if (!onFullSync) return;
-    setIsLoading(true);
-    setStatus({ type: 'loading', message: 'Executing Full Two-Way Sync...' });
-    try {
-      await onFullSync();
-      setStatus({ type: 'success', message: 'SUCCESS! Cloud matches Local, and Local updated with latest Cloud data.' });
-    } catch (err: any) {
-      console.error('Full Sync Error:', err);
-      setStatus({ type: 'error', message: `Full sync failed: ${err.message}` });
-    } finally {
-      setIsLoading(false);
-    }
+    showConfirm("EXECUTE FULL TWO-WAY SYNC?\n\nThis will PUSH local changes to Cloud first, then PULL latest from Cloud to sync all devices.", async () => {
+        setIsLoading(true);
+        setStatus({ type: 'loading', message: 'Executing Full Two-Way Sync...' });
+        try {
+          await onFullSync();
+          setStatus({ type: 'success', message: 'SUCCESS! Cloud matches Local, and Local updated with latest Cloud data.' });
+        } catch (err: any) {
+          console.error('Full Sync Error:', err);
+          setStatus({ type: 'error', message: `Full sync failed: ${err.message}` });
+        } finally {
+          setIsLoading(false);
+        }
+    });
+  };
+
+  const handleExportBackup = () => {
+      const dataStr = JSON.stringify(appState, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `pbz_backup_${new Date().toISOString().split('T')[0]}.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+      
+      setStatus({ type: 'success', message: 'Backup file generated and downloading...' });
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              const migrated = migrateState(json, INITIAL_STATE);
+              onRestore(migrated);
+              setStatus({ type: 'success', message: 'Successfully imported backup file!' });
+          } catch (err) {
+              console.error("Import Error:", err);
+              setStatus({ type: 'error', message: 'Invalid JSON file. Cannot import.' });
+          }
+      };
+      reader.readAsText(file);
   };
 
   return (
@@ -289,13 +395,26 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-xs font-black text-on-surface uppercase tracking-wider">Supabase Auto-Sync</p>
-              <p className="text-[10px] text-green-500 font-black uppercase tracking-widest animate-pulse">System Active & Backing Up</p>
+              <p className={`text-[10px] font-black uppercase tracking-widest ${isManualMode ? 'text-aura-gold animate-pulse' : 'text-green-500 animate-pulse'}`}>
+                {isManualMode ? 'Mode: PAUSED (Manual Restore Active)' : 'Mode: ACTIVE (Cloud Authoritative)'}
+              </p>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-              <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Always On</span>
-            </div>
+            <button 
+                onClick={toggleManualMode}
+                className={`px-4 py-2 rounded-full border transition-all text-[9px] font-black uppercase tracking-widest ${
+                    isManualMode 
+                    ? 'bg-aura-gold/20 border-aura-gold text-aura-gold shadow-[0_0_15px_rgba(255,140,0,0.3)]' 
+                    : 'bg-green-500/10 border-green-500/30 text-green-500 hover:bg-green-500/20'
+                }`}
+            >
+              {isManualMode ? 'Disable Manual Mode' : 'Enable Manual Mode'}
+            </button>
           </div>
+          {isManualMode && (
+              <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest leading-relaxed pt-2 border-t border-white/5 italic">
+                ⚠️ Cloud data is currently being ignored. Use this to restore old data safely, then "Push To Cloud" to lock it in.
+              </p>
+          )}
         </div>
 
         {/* Data Recovery Section */}
@@ -393,13 +512,38 @@ const BackupRestoreManager: React.FC<BackupRestoreManagerProps> = ({
           </button>
 
           <button 
-            onClick={() => handlePushToSupabase()}
+            onClick={handlePushToSupabaseConfirm}
             disabled={isLoading}
             className="w-full py-8 bg-primary/10 border-2 border-primary/30 text-primary font-headline font-black italic uppercase tracking-widest rounded-2xl hover:bg-primary/20 transition-all flex flex-col items-center justify-center gap-3 disabled:opacity-50 manga-skew group"
           >
             <IconUpload size={24} className="manga-skew-reverse group-hover:scale-110 transition-transform" />
             <span className="text-[11px] manga-skew-reverse">Push To Cloud</span>
           </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <button 
+            onClick={handleExportBackup}
+            className="w-full py-4 bg-zinc-900 border-2 border-white/5 text-zinc-400 font-headline font-black italic uppercase tracking-widest rounded-2xl hover:bg-zinc-800 transition-all flex items-center justify-center gap-3 manga-skew group"
+          >
+            <IconDownload size={18} className="manga-skew-reverse group-hover:-translate-y-0.5 transition-transform" /> 
+            <span className="text-[10px] manga-skew-reverse">Export .JSON</span>
+          </button>
+          
+          <div className="relative">
+            <input 
+              type="file" 
+              accept=".json"
+              onChange={handleImportFile}
+              className="absolute inset-0 opacity-0 cursor-pointer z-10"
+            />
+            <button 
+              className="w-full h-full py-4 bg-zinc-900 border-2 border-white/5 text-zinc-400 font-headline font-black italic uppercase tracking-widest rounded-2xl hover:bg-zinc-800 transition-all flex items-center justify-center gap-3 manga-skew group"
+            >
+              <IconUpload size={18} className="manga-skew-reverse group-hover:translate-y-0.5 transition-transform" /> 
+              <span className="text-[10px] manga-skew-reverse">Import JSON</span>
+            </button>
+          </div>
         </div>
 
         <div className="pt-4">

@@ -41,7 +41,8 @@ export const saveState = (state: AppState) => {
     
     // 🛡️ Create a safety backup if we have a healthy number of players
     // This helps recover if a sync wipes the main key
-    if (state.players.length > 5) {
+    // We check length to avoid QuotaExceededError (limit roughly 5MB)
+    if (state.players.length > 5 && serialized.length < 2000000) {
       localStorage.setItem(`${STORAGE_KEY}_backup`, serialized);
     }
   } catch (e) {
