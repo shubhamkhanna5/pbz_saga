@@ -50,6 +50,36 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
       return [];
     }
   }, [activeLeague]);
+
+  const currentWeek = useMemo(() => {
+    if (!activeLeague?.days || activeLeague.days.length === 0) return 1;
+    return Math.max(...activeLeague.days.map(d => d.week));
+  }, [activeLeague]);
+
+  const d2OfCurrentWeek = useMemo(() => {
+    return activeLeague?.days?.find(d => d.week === currentWeek && d.day === 2);
+  }, [activeLeague, currentWeek]);
+
+  const isD2Closed = useMemo(() => {
+    if (!d2OfCurrentWeek) return false;
+    return d2OfCurrentWeek.matches.every(
+      m => m.status === 'completed' || m.status === 'cancelled' || m.status === 'walkover'
+    );
+  }, [d2OfCurrentWeek]);
+
+  const currentWeekStandings = useMemo(() => {
+    if (!activeLeague) return [];
+    try {
+      const currentWeekLeague = {
+          ...activeLeague,
+          days: (activeLeague.days || []).filter(d => d.week === currentWeek)
+      };
+      return calculateLeagueStandings(currentWeekLeague);
+    } catch (err) {
+      console.error("Error calculating current week standings:", err);
+      return [];
+    }
+  }, [activeLeague, currentWeek]);
   
   const [activeTab, setActiveTab] = useState<Tab>('live');
   const [selectedLeagueId, setSelectedLeagueId] = useState<string | null>(null);
@@ -134,6 +164,15 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
         rawStandings = isTargetActive 
           ? (targetLeague.finalStandings || [])
           : (pastStandings.length > 0 ? pastStandings : (targetLeague.finalStandings || []));
+    }
+
+    // Dynamic fallback if rawStandings is empty but targetLeague has matches/days
+    if (rawStandings.length === 0 && targetLeague && targetLeague.days && targetLeague.days.length > 0) {
+        try {
+            rawStandings = calculateLeagueStandings(targetLeague);
+        } catch (err) {
+            console.error("Error calculating standings dynamically for past league:", err);
+        }
     }
 
     console.log("RAW STANDINGS:", rawStandings);
@@ -300,9 +339,9 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
         </div>
 
         {/* Standings */}
-        <div className="bg-zinc-950 rounded-[2.5rem] border-2 border-white/5 overflow-hidden p-6 space-y-6">
+        <div className="bg-zinc-950 rounded-2xl border-2 border-white/5 overflow-hidden p-4 space-y-4">
              <div className="text-center relative">
-                 <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">{targetLeague.name}</h3>
+                 <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">{targetLeague.name}</h3>
                  <div className="flex items-center justify-center gap-2 mt-1">
                     <span className={`text-[8px] font-black px-2 py-0.5 rounded ${targetLeague.status === 'active' ? 'bg-primary text-on-primary' : 'bg-zinc-800 text-zinc-500'}`}>
                         {targetLeague.status === 'active' ? 'ARC ACTIVE' : 'SAGA SEALED'}
@@ -358,7 +397,7 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
                              whileHover={{ x: 5, backgroundColor: "rgba(255,255,255,0.03)" }}
                              key={`${s.playerId}-${idx}`} 
                              onClick={() => p && setSelectedProfile({ player: p as any, standing: s })}
-                             className={`group flex justify-between items-center p-4 rounded-2xl cursor-pointer transition-all border-2 ${
+                             className={`group flex justify-between items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${
                                  isChamp 
                                      ? 'bg-aura-gold/10 border-aura-gold shadow-[0_0_20px_rgba(255,215,0,0.1)]' 
                                      : 'bg-zinc-900 border-transparent hover:border-white/10'
@@ -435,34 +474,20 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
     }
 
     // In renderLive, we are always looking at the active saga
-    const hasLiveStats = liveLeaderboard && liveLeaderboard.length > 0;
-    
-    const displayLeaderboard = hasLiveStats
-        ? liveLeaderboard.map(p => ({
-            playerId: p.playerId || p.player_id,
-            name: p.name || players.find(pl => pl.id === (p.playerId || p.player_id))?.name || 'Unknown',
-            points: p.points || p.totalPoints || p.total_points || 0,
-            gamesPlayed: p.gamesPlayed || p.games_played || 0,
-            wins: p.wins || 0,
-            ppg: p.ppg || 0,
-            elo: p.elo || 1200
-          }))
-        : (activeLeague && localActiveStandings.length > 0
-            ? localActiveStandings.map(s => ({
-                playerId: s.playerId,
-                name: players.find(pl => pl.id === s.playerId)?.name || s.playerId,
-                points: s.points,
-                gamesPlayed: s.gamesPlayed,
-                wins: s.wins,
-                ppg: s.ppg,
-                elo: s.elo
-              }))
-            : (liveLeaderboard || []));
+    const displayLeaderboard = currentWeekStandings.map(s => ({
+        playerId: s.playerId,
+        name: players.find(pl => pl.id === s.playerId)?.name || s.playerId,
+        points: s.points,
+        gamesPlayed: s.gamesPlayed,
+        wins: s.wins,
+        ppg: s.ppg,
+        elo: s.elo
+    }));
 
     const sortedLive = [...displayLeaderboard]
         .map(p => {
-            const points = p.points || p.totalPoints || p.total_points || 0;
-            const games = p.gamesPlayed || p.games_played || p.games || 0;
+            const points = p.points || 0;
+            const games = p.gamesPlayed || 0;
             const ppg = p.ppg || (games > 0 ? points / games : 0);
             return { ...p, points, games, ppg };
         })
@@ -474,114 +499,140 @@ const LeaderboardsManager: React.FC<LeaderboardsManagerProps> = ({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
-            className="space-y-8"
+            className="space-y-4"
         >
-            <div className="dbz-card p-10 text-center relative overflow-hidden manga-shadow bg-surface/90 backdrop-blur-md border-primary/20">
-                 <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
-                 <h3 className="text-4xl font-headline font-black italic text-primary uppercase tracking-tighter drop-shadow-xl transform -skew-x-12">Live Leaderboard</h3>
-                 <p className="text-xs text-on-surface-variant font-black uppercase tracking-[0.4em] mt-2 animate-pulse">Ranked by Efficiency (PPG)</p>
-            </div>
+            <div className="dbz-card p-4 text-center relative overflow-hidden manga-shadow bg-surface/90 backdrop-blur-md border border-primary/20">
+                  <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
+                  <h3 className="text-2xl font-headline font-black italic text-primary uppercase tracking-tighter drop-shadow-md transform -skew-x-12">Live Leaderboard</h3>
+                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-[0.3em] mt-1 bg-clip-text text-transparent bg-gradient-to-r from-primary to-on-surface animate-pulse">Ranked by Efficiency (PPG)</p>
+             </div>
 
-            <div className="space-y-4">
-                <AnimatePresence mode="popLayout">
-                {sortedLive.map((p, idx) => {
-                    const isTop3 = idx < 3;
-                    const auraColor = idx === 0 ? 'border-aura-gold shadow-aura-gold/20' : 
-                                    idx === 1 ? 'border-zinc-400 shadow-zinc-400/10' : 
-                                    idx === 2 ? 'border-aura-red shadow-aura-red/10' : 'border-white/5';
+             {isD2Closed ? (
+                <div className="dbz-card overflow-hidden border border-primary/20 bg-surface/90 backdrop-blur-md p-6 text-center flex flex-col items-center justify-center gap-3 animate-in zoom-in-95 duration-500">
+                    <div className="relative mb-1">
+                        <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse"></div>
+                        <div className="w-16 h-16 bg-zinc-950 rounded-2xl border border-primary/30 flex items-center justify-center relative z-10">
+                            <span className="text-2xl">🏁</span>
+                        </div>
+                    </div>
+                    <h3 className="text-xl font-headline font-black italic text-primary uppercase tracking-tighter transform -skew-x-12">
+                        WEEK {currentWeek} CONCLUDED
+                    </h3>
+                    <p className="text-sm font-headline font-black italic uppercase tracking-widest text-primary animate-pulse max-w-sm">
+                        NEW WEEK HAS TO START FOR THE LIVE LEADERBOARD
+                    </p>
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest leading-relaxed max-w-xs">
+                        All matches for this week (Day 1 & Day 2) are finished and closed.
+                    </span>
+                </div>
+            ) : sortedLive.length === 0 ? (
+                <div className="p-6 text-center dbz-card bg-surface/80 border border-outline/10 rounded-2xl">
+                    <p className="text-xs font-black text-on-surface-variant/40 uppercase tracking-widest italic">
+                        No battles completed in Week {currentWeek} yet...
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    <AnimatePresence mode="popLayout">
+                    {sortedLive.map((p, idx) => {
+                        const isTop3 = idx < 3;
+                        const auraColor = idx === 0 ? 'border-aura-gold shadow-aura-gold/20' : 
+                                        idx === 1 ? 'border-zinc-400 shadow-zinc-400/10' : 
+                                        idx === 2 ? 'border-aura-red shadow-aura-red/10' : 'border-white/5';
 
-                    return (
-                        <motion.div 
-                            layout
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ 
-                                duration: 0.3, 
-                                delay: idx * 0.03,
-                                layout: { type: "spring", stiffness: 300, damping: 30 }
-                            }}
-                            whileHover={{ x: 5, backgroundColor: "rgba(255,255,255,0.03)" }}
-                            key={p.playerId ? `live-${p.playerId}-${idx}` : `live-idx-${idx}`}
-                            className={`group flex items-center justify-between p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer ${
-                                isTop3 
-                                    ? `bg-surface/80 ${auraColor} shadow-2xl` 
-                                    : 'bg-surface/40 border-white/5 hover:border-primary/20'
-                            }`}
-                        >
-                            <div className="flex items-center gap-6">
-                                <div className={`w-12 h-12 flex items-center justify-center font-headline font-black italic text-2xl transform -skew-x-12 ${
-                                    idx === 0 ? 'text-aura-gold' : 
-                                    idx === 1 ? 'text-zinc-400' : 
-                                    idx === 2 ? 'text-aura-red' : 'text-zinc-700'
-                                }`}>
-                                    #{idx + 1}
-                                </div>
-                                <div>
-                                    <div className={`text-xl font-headline font-black italic uppercase tracking-tighter transform -skew-x-6 group-hover:text-primary transition-colors flex items-center gap-2 ${
-                                        idx === 0 ? 'text-aura-gold' : 'text-on-surface'
+                        return (
+                            <motion.div 
+                                layout
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{ 
+                                    duration: 0.3, 
+                                    delay: idx * 0.03,
+                                    layout: { type: "spring", stiffness: 300, damping: 30 }
+                                }}
+                                whileHover={{ x: 5, backgroundColor: "rgba(255,255,255,0.03)" }}
+                                key={p.playerId ? `live-${p.playerId}-${idx}` : `live-idx-${idx}`}
+                                className={`group flex items-center justify-between p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
+                                    isTop3 
+                                        ? `bg-surface/80 ${auraColor} shadow-2xl` 
+                                        : 'bg-surface/40 border-white/5 hover:border-primary/20'
+                                }`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 flex items-center justify-center font-headline font-black italic text-xl transform -skew-x-12 ${
+                                        idx === 0 ? 'text-aura-gold' : 
+                                        idx === 1 ? 'text-zinc-400' : 
+                                        idx === 2 ? 'text-aura-red' : 'text-zinc-700'
                                     }`}>
-                                        {(p.name || p.player_name)?.toUpperCase()}
-                                        {idx === 0 && <span>👑</span>}
-                                        {(() => {
-                                          const player = players.find(pl => pl.id === p.playerId);
-                                          const dbCount = player?.dragonBalls || 0;
-                                          if (dbCount <= 0) return null;
-                                          return (
-                                            <div className="flex items-center gap-0.5 ml-1">
-                                              {[...Array(Math.min(dbCount, 7))].map((_, i) => (
-                                                <span key={i} className="text-sm drop-shadow-[0_0_5px_rgba(255,140,0,0.8)]">🟠</span>
-                                              ))}
-                                              {dbCount > 7 && <span className="text-[10px] font-black text-aura-gold">+{dbCount - 7}</span>}
-                                            </div>
-                                          );
-                                        })()}
+                                        #{idx + 1}
                                     </div>
-                                    <div className="text-[10px] font-black text-on-surface-variant/40 uppercase mt-0.5 tracking-widest">
-                                        {p.games} Games Played • {p.wins} Wins
+                                    <div>
+                                        <div className={`text-base font-headline font-black italic uppercase tracking-tighter transform -skew-x-6 group-hover:text-primary transition-colors flex items-center gap-1.5 ${
+                                            idx === 0 ? 'text-aura-gold' : 'text-on-surface'
+                                        }`}>
+                                            {(p.name || p.player_name)?.toUpperCase()}
+                                            {idx === 0 && <span>👑</span>}
+                                            {(() => {
+                                              const player = players.find(pl => pl.id === p.playerId);
+                                              const dbCount = player?.dragonBalls || 0;
+                                              if (dbCount <= 0) return null;
+                                              return (
+                                                <div className="flex items-center gap-0.5 ml-1">
+                                                  {[...Array(Math.min(dbCount, 7))].map((_, i) => (
+                                                    <span key={i} className="text-sm drop-shadow-[0_0_5px_rgba(255,140,0,0.8)]">🟠</span>
+                                                  ))}
+                                                  {dbCount > 7 && <span className="text-[10px] font-black text-aura-gold">+{dbCount - 7}</span>}
+                                                </div>
+                                              );
+                                            })()}
+                                        </div>
+                                        <div className="text-[9px] font-black text-on-surface-variant/40 uppercase mt-0.5 tracking-widest">
+                                            {p.games} Games Played • {p.wins} Wins
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="text-right">
-                                <div className="text-3xl font-headline font-black text-primary italic leading-none">
-                                    {p.ppg.toFixed(2)}
-                                    <span className="text-[10px] ml-1 uppercase not-italic text-on-surface-variant/40">PPG</span>
+                                <div className="text-right">
+                                    <div className="text-2xl font-headline font-black text-primary italic leading-none">
+                                        {p.ppg.toFixed(2)}
+                                        <span className="text-[9px] ml-0.5 uppercase not-italic text-on-surface-variant/40">PPG</span>
+                                    </div>
+                                    <div className="text-[10px] font-black text-on-surface-variant/60 uppercase mt-0.5 tracking-widest">
+                                        {p.points} Pts
+                                    </div>
                                 </div>
-                                <div className="text-[11px] font-black text-on-surface-variant/60 uppercase mt-1 tracking-widest">
-                                    {p.points} Total Points
-                                </div>
-                            </div>
-                        </motion.div>
-                    );
-                })}
-                </AnimatePresence>
-            </div>
+                            </motion.div>
+                        );
+                    })}
+                    </AnimatePresence>
+                </div>
+            )}
         </motion.div>
     );
   };
 
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-5 pb-20">
       
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap justify-center gap-3 px-2">
+      <div className="flex flex-nowrap sm:flex-wrap justify-between sm:justify-center gap-2 px-1 sm:px-2 w-full max-w-sm mx-auto">
         {[
-          { id: 'live', label: 'CURRENT SAGA', icon: IconZap, color: 'primary' },
-          { id: 'league', label: 'SAGA HISTORY', icon: IconActivity, color: 'primary' }
+          { id: 'live', label: 'LIVE SAGA', icon: IconZap, color: 'primary' },
+          { id: 'league', label: 'HISTORY', icon: IconActivity, color: 'primary' }
         ].map((tab) => (
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-8 py-4 rounded-[2rem] font-headline font-black italic uppercase tracking-widest text-[11px] transition-all flex items-center gap-3 manga-skew border-2 ${
+            className={`flex-1 sm:flex-initial px-4 py-3 sm:px-6 sm:py-3.5 rounded-xl font-headline font-black italic uppercase tracking-widest text-[10px] sm:text-[11px] transition-all flex items-center justify-center gap-2 manga-skew border-2 ${
               activeTab === tab.id 
-                ? `bg-${tab.color} border-${tab.color} text-on-primary shadow-[0_0_25px_rgba(0,0,0,0.2)] scale-105 z-10` 
+                ? `bg-${tab.color} border-${tab.color} text-on-primary shadow-[0_0_25px_rgba(0,0,0,0.2)] scale-102 z-10` 
                 : 'bg-surface border-outline/10 text-on-surface-variant hover:border-primary/30'
             }`}
           >
-            <tab.icon size={18} className="manga-skew-reverse" />
-            <span className="manga-skew-reverse">{tab.label}</span>
+            <tab.icon size={16} className="manga-skew-reverse shrink-0" />
+            <span className="manga-skew-reverse truncate">{tab.label}</span>
           </motion.button>
         ))}
       </div>

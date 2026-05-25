@@ -44,6 +44,18 @@ export const migrateState = (state: any, initialState: AppState): AppState => {
   const migrateLeague = (l: any): League => {
     if (!l) return l;
     const league = { ...l };
+    
+    // Map snake_case columns from Supabase
+    if (league.final_standings !== undefined && league.finalStandings === undefined) {
+      league.finalStandings = league.final_standings;
+    }
+    if (league.days_per_week !== undefined && league.daysPerWeek === undefined) {
+      league.daysPerWeek = league.days_per_week;
+    }
+    if (league.start_date !== undefined && league.startDate === undefined) {
+      league.startDate = league.start_date;
+    }
+
     if (!Array.isArray(league.auditLog)) league.auditLog = [];
     if (!Array.isArray(league.players)) league.players = [];
     if (!Array.isArray(league.days)) league.days = [];

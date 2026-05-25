@@ -4,27 +4,27 @@
 @theme {
   --color-primary: #A855F7;
   --color-primary-container: #7c3aed;
-  --color-on-primary: #1a0b2e;
-  --color-on-primary-container: #1a0b2e;
-  --color-secondary: #7c3aed;
-  --color-on-secondary: #1a0b2e;
-  --color-secondary-container: #a78bfa;
-  --color-on-secondary-container: #2e1065;
-  --color-tertiary: #705d00;
-  --color-tertiary-container: #c7a800;
-  --color-on-tertiary-container: #4b3e00;
-  --color-surface: #fff8f5;
-  --color-on-surface: #241912;
-  --color-surface-variant: #f3dfd1;
-  --color-on-surface-variant: #564334;
-  --color-background: #fff8f5;
-  --color-on-background: #241912;
-  --color-outline: #897362;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #ebd5ff;
+  --color-secondary: #d946ef;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #a21caf;
+  --color-on-secondary-container: #fdf4ff;
+  --color-tertiary: #a855f7;
+  --color-tertiary-container: #ef4444;
+  --color-on-tertiary-container: #fef2f2;
+  --color-surface: #0b0518;
+  --color-on-surface: #f8fafc;
+  --color-surface-variant: #150e28;
+  --color-on-surface-variant: #cbd5e1;
+  --color-background: #05020a;
+  --color-on-background: #f8fafc;
+  --color-outline: #3c1a5e;
 
-  --color-hype-400: #fbbf24;
-  --color-hype-500: #f59e0b;
-  --color-hype-600: #d97706;
-  --color-hype-900: #78350f;
+  --color-hype-400: #ffd700;
+  --color-hype-500: #d946ef;
+  --color-hype-600: #a855f7;
+  --color-hype-900: #4a154b;
   
   --font-headline: "Space Grotesk", sans-serif;
   --font-body: "Be Vietnam Pro", sans-serif;
@@ -140,11 +140,11 @@ body {
 }
 
 .dbz-card {
-  @apply bg-white/95 border border-zinc-200 shadow-sm rounded-xl transition-all duration-300;
+  @apply bg-zinc-950/60 border border-purple-900/40 shadow-2xl rounded-2xl backdrop-blur-md transition-all duration-300;
 }
 
 .dark .dbz-card {
-  @apply bg-zinc-900/80 border-orange-500/20 shadow-xl backdrop-blur-md;
+  @apply bg-zinc-950/80 border-purple-500/30 shadow-[0_0_20px_rgba(217,70,239,0.15)] backdrop-blur-md;
 }
 
 @keyframes dbz-impact {

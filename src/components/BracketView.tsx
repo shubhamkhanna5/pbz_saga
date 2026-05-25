@@ -113,7 +113,7 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
           whileHover={canInteract ? { scale: 1.02, y: -4 } : {}}
           whileTap={canInteract ? { scale: 0.98 } : {}}
           onClick={() => canInteract && onScoreMatch(day.id, match.id)}
-          className={`relative p-6 rounded-[2rem] border-2 transition-all duration-300 group ${
+          className={`relative p-3.5 xs:p-4 rounded-2xl border-2 transition-all duration-300 group ${
             state === 'walkover' || state === 'cancelled'
             ? 'bg-zinc-950 border-zinc-800 opacity-80'
             : isComplete 
@@ -125,7 +125,7 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
                         : 'bg-zinc-950 border-zinc-900/50'
           }`}
         >
-          <div className="flex justify-between items-center mb-5">
+          <div className="flex justify-between items-center mb-3.5">
              <div className="flex items-center gap-2">
                  <span className={`text-[9px] font-black uppercase tracking-widest bg-black/50 px-3 py-1 rounded-xl border border-white/5 ${isCustomMatch ? 'text-hype-500 border-hype-500/30 bg-hype-500/5' : 'text-zinc-600'}`}>
                    {isCustomMatch ? (
@@ -153,14 +153,14 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
               <div className="shrink-0 flex items-center pt-1">
                   {isComplete && match.status === 'completed' ? (
                       <div className="px-4 py-2 bg-zinc-950 border-2 border-white/5 rounded-2xl text-lg font-black text-white italic transform -skew-x-6">
-                          {match.scoreA} <span className="text-zinc-800 font-normal">/</span> {match.scoreB}
+                          {match.scoreA} <span className="text-purple-500 font-normal">/</span> {match.scoreB}
                       </div>
                   ) : isLive ? (
                       <div className="text-[12px] font-black text-red-500 italic uppercase transform -skew-x-12 px-2 py-1 border border-red-500/30 rounded bg-red-900/10 animate-pulse">
                          {match.scoreA} - {match.scoreB}
                       </div>
                   ) : (
-                      <div className="text-[12px] font-black text-zinc-800 italic uppercase transform -skew-x-12 px-2 py-1 border border-zinc-900 rounded">VS</div>
+                      <div className="text-[12px] font-black text-purple-400 italic uppercase transform -skew-x-12 px-2 py-1 border border-purple-900/40 bg-purple-950/20 rounded">VS</div>
                   )}
               </div>
 
@@ -194,19 +194,19 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="space-y-8"
+      className="space-y-4"
     >
       <motion.div 
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="flex justify-between items-center bg-zinc-900/40 p-6 rounded-[2.5rem] border-2 border-white/5 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+        className="flex justify-between items-center bg-zinc-900/40 p-4 rounded-2xl border-2 border-white/5 shadow-2xl relative overflow-hidden backdrop-blur-xl"
       >
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl rounded-full pointer-events-none"></div>
         <div className="absolute -bottom-4 -left-4 p-4 opacity-5 pointer-events-none rotate-12">
             <IconZap size={100} className="text-white" />
         </div>
         <div className="relative z-10">
-           <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter drop-shadow-md">
+           <h3 className="text-xl font-black text-white italic uppercase tracking-tighter drop-shadow-md">
              {day.matches[0]?.podId ? 'POD SAGA' : `CHAPTER ${day.day}`}: HYBRID CLASH
            </h3>
            <p className="text-[10px] text-aura-gold font-black uppercase tracking-[0.3em] mt-1 italic">
@@ -215,9 +215,9 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
         </div>
       </motion.div>
 
-      <div className="space-y-8">
+      <div className="space-y-5">
           {/* Active / Pending Queue */}
-          <div className="space-y-4">
+          <div className="space-y-2.5">
               <div className="flex items-center gap-4 px-2">
                  <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] animate-pulse">LIVE OPERATIONS</span>
                  <div className="h-px flex-1 bg-gradient-to-r from-primary/50 to-transparent"></div>
@@ -227,13 +227,13 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="text-center py-8 bg-zinc-900/20 rounded-[2rem] border-2 border-dashed border-zinc-800"
+                    className="text-center py-6 bg-zinc-900/20 rounded-[2rem] border-2 border-dashed border-zinc-800"
                   >
                       <p className="text-zinc-600 font-black uppercase text-[10px] tracking-widest italic">All scheduled matches complete</p>
                   </motion.div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <AnimatePresence mode="popLayout">
                   {activeQueue.map(m => renderMatchCard(m, false))}
                 </AnimatePresence>
@@ -242,12 +242,12 @@ const BracketView: React.FC<BracketViewProps> = ({ day, players, onScoreMatch, o
 
           {/* Completed History (All matches, including custom) */}
           {history.length > 0 && (
-              <div className="space-y-4 pt-4">
+              <div className="space-y-2.5 pt-2">
                   <div className="flex items-center gap-4 px-2">
                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">BATTLE LOG</span>
                      <div className="h-px flex-1 bg-zinc-800"></div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 opacity-80">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 opacity-80">
                     <AnimatePresence mode="popLayout">
                       {history.map(m => renderMatchCard(m, true))}
                     </AnimatePresence>

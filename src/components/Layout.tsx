@@ -27,19 +27,29 @@ interface LayoutWithSyncProps extends LayoutProps {
 const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate, isAdmin, actions, title, appState, onAppStateRestore, syncStatus, onRetrySync, onHardReset, isDarkMode, onToggleDarkMode, isOffline }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const navItems = [
+  const sagaLabel = appState?.activeLeague?.name || 'Saga Name';
+
+  const navItems = isAdmin ? [
     { id: 'home', label: 'Home Base', icon: IconHome, color: 'text-primary' },
     { id: 'league', label: 'Saga Battle', icon: IconCheck, color: 'text-tertiary' },
     { id: 'roster', label: 'Z-Fighters', icon: IconUsers, color: 'text-primary' },
     { id: 'leaderboards', label: 'Hall of Fame', icon: IconDumbbell, color: 'text-tertiary' },
     { id: 'backup', label: 'God Mode', icon: IconCloud, color: 'text-purple-500' },
+  ] : [
+    { id: 'home', label: sagaLabel, icon: IconHome, color: 'text-primary' },
+    { id: 'league', label: 'Saga Battle', icon: IconCheck, color: 'text-tertiary' },
+    { id: 'leaderboards', label: 'Hall of Fame', icon: IconDumbbell, color: 'text-tertiary' },
   ];
 
-  const bottomNavItems = [
+  const bottomNavItems = isAdmin ? [
     { id: 'home', label: 'Home', icon: IconHome },
     { id: 'league', label: 'Saga', icon: IconCheck },
     { id: 'roster', label: 'Roster', icon: IconUsers },
     { id: 'leaderboards', label: 'Hall', icon: IconDumbbell },
+  ] : [
+    { id: 'home', label: sagaLabel.length > 12 ? sagaLabel.substring(0, 10).trim() + "..." : sagaLabel, icon: IconHome },
+    { id: 'league', label: 'Saga Battle', icon: IconCheck },
+    { id: 'leaderboards', label: 'Hall of Fame', icon: IconDumbbell },
   ];
 
   const handleNav = (id: string) => {
@@ -94,14 +104,14 @@ const Layout: React.FC<LayoutWithSyncProps> = ({ children, activeTab, onNavigate
       )}
 
       {/* Main Content */}
-      <main className="flex-1 w-full px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 relative">
-        <div className="max-w-md mx-auto h-full">
+      <main className={`flex-1 w-full pb-[calc(4.5rem+env(safe-area-inset-bottom))] pt-2 relative ${activeTab === 'home' ? 'px-0' : 'px-4'}`}>
+        <div className={`mx-auto min-h-full flex flex-col ${activeTab === 'home' ? 'max-w-none w-full' : 'max-w-md w-full'}`}>
           {children}
         </div>
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-lg border-t border-outline/10 px-4 pb-[env(safe-area-inset-bottom)] pt-2 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-lg border-t border-outline/10 px-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
         <div className="max-w-md mx-auto flex justify-between items-center">
           {bottomNavItems.map(item => (
             <button

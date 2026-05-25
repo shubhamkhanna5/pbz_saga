@@ -5,17 +5,26 @@
     <meta charset="UTF-8" />
     <meta 
       name="viewport" 
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" 
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no, shrink-to-fit=no" 
     />
     <title>PickleBallZ Sagas</title>
+    <!-- PWA Capabilities -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0b0518" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PBZ Sagas" />
+    <link rel="apple-touch-icon" href="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=192" />
+    
     <style>
-      /* --- ANDROID STABILIZATION --- */
+      /* --- MOBILE PERFORMANCE STABILIZATION --- */
       html {
-        height: 100%;
+        min-height: 100%;
         width: 100%;
         background-color: #020617;
-        /* Stops the "white flash" bounce at top/bottom of page */
-        overscroll-behavior: none; 
+        /* Custom overscroll-behavior to allow natural scrolling while containing bounces */
+        overscroll-behavior-y: auto; 
+        overflow-x: hidden;
       }
 
       body {
@@ -28,7 +37,9 @@
         color: #f8fafc;
         -webkit-tap-highlight-color: transparent;
         -webkit-text-size-adjust: 100%; /* Prevent Samsung font inflating */
-        overscroll-behavior-y: none;
+        overscroll-behavior-y: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
 
       #root {

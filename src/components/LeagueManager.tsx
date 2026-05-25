@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDialog } from './ui/DialogProvider';
+import homeIcon from './icon.png';
 import { AppState, League, LeagueDay, Player, LeagueMatch } from '../types';
 import { generateLeagueDay, generatePodLeagueDay, calculateLeagueStandings, undoLastNoShow, buildSagaHistory, rebalanceAfterDropout, isLeagueDayComplete, adminOverrideScore, finalizePlayedMatch, applyNoShow, deleteLeagueDay } from '../utils/leagueLogic';
 import { generateMatchDayPDF, generateLeagueGloryPDF } from '../utils/pdfGenerator';
@@ -56,6 +57,19 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
 
   const activeLeague = state.activeLeague;
 
+  const currentWeek = useMemo(() => {
+    if (!activeLeague?.days || activeLeague.days.length === 0) return 1;
+    return Math.max(...activeLeague.days.map(d => d.week));
+  }, [activeLeague]);
+
+  const d2OfCurrentWeek = useMemo(() => {
+    return activeLeague?.days?.find(d => d.week === currentWeek && d.day === 2);
+  }, [activeLeague, currentWeek]);
+
+  const isD2Closed = useMemo(() => {
+    return d2OfCurrentWeek ? isLeagueDayComplete(d2OfCurrentWeek) : false;
+  }, [d2OfCurrentWeek]);
+
   const allCustomMatches = useMemo(() => {
     if (!activeLeague?.days) return [];
     const custom: any[] = [];
@@ -107,12 +121,32 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
           if (activeLeague.status === 'completed' && activeLeague.finalStandings) {
               return activeLeague.finalStandings;
           }
-          return calculateLeagueStandings(activeLeague);
+          // Only show d1 + d2 leaderboard of current week for the active/current saga
+          const currentWeekLeague = {
+              ...activeLeague,
+              days: (activeLeague.days || []).filter(d => d.week === currentWeek)
+          };
+          return calculateLeagueStandings(currentWeekLeague);
       } catch (err) {
           console.error("Error calculating standings:", err);
           return [];
       }
-  }, [activeLeague, state.players]);
+  }, [activeLeague, state.players, currentWeek]);
+
+  const dayStandings = useMemo(() => {
+      try {
+          const selectedDayObj = activeLeague?.days?.find(d => d.id === selectedDayId);
+          if (!activeLeague || !selectedDayObj) return [];
+          return calculateLeagueStandings({
+              ...activeLeague,
+              days: [selectedDayObj]
+          }).filter(s => s.gamesPlayed > 0)
+            .sort((a, b) => b.ppg - a.ppg || b.points - a.points);
+      } catch (err) {
+          console.error("Error calculating day standings:", err);
+          return [];
+      }
+  }, [activeLeague, selectedDayId]);
 
   const handleCreateLeague = () => {
     const newLeague: League = {
@@ -639,9 +673,16 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
         >
             <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
             <div className="flex justify-between items-start relative z-10">
-             <div className="space-y-1">
-                <h2 className="text-3xl font-headline font-black italic text-primary uppercase tracking-tighter drop-shadow-md transform -skew-x-12">{activeLeague?.name}</h2>
+             <div className="space-y-1.5">
                 <div className="flex items-center gap-3">
+                    <img 
+                      src={homeIcon} 
+                      alt="Saga Logo" 
+                      className="w-10 h-10 object-contain flex-shrink-0" 
+                    />
+                    <h2 className="text-3xl font-headline font-black italic text-primary uppercase tracking-tighter drop-shadow-md transform -skew-x-12">{activeLeague?.name}</h2>
+                </div>
+                <div className="flex items-center gap-3 pl-[52px]">
                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded">
                         <IconZap size={10} className="text-primary fill-primary" />
                         <span className="text-[9px] text-primary font-black uppercase tracking-widest">ARC {(activeLeague?.days || []).length}</span>
@@ -751,67 +792,91 @@ const LeagueManager: React.FC<LeagueManagerProps> = ({ state, onUpdateLeague, on
                     onManageMatch={handleManageClick}
                     isAdmin={isAdmin}
                 />
-            </div>
-        ) : (
-            <>
-                <div className="dbz-card overflow-hidden manga-shadow bg-surface/80 backdrop-blur-sm border-outline/10">
-                    {/* ... Standings Table ... */}
-                    <div className="p-5 border-b border-outline/10 bg-surface-variant/50 flex justify-between items-center">
-                        <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em] flex items-center gap-2">
-                            <IconTrophy size={14} className="text-primary" /> POWER STANDINGS
-                        </h3>
+
+                {/* LIVE LEADERBOARD OF THAT DAY */}
+                <div className="dbz-card overflow-hidden manga-shadow bg-surface/80 backdrop-blur-sm border-outline/10 mt-8">
+                    <div className="p-5 border-b border-outline/10 bg-surface-variant/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div className="space-y-1">
+                            <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em] flex items-center gap-2">
+                                <IconTrophy size={14} className="text-primary animate-pulse" /> LIVE DAY FIGHTER STANDINGS
+                            </h3>
+                            <p className="text-[8px] font-black text-zinc-500 uppercase tracking-wider">
+                                Ranked by Efficiency (Points Per Game)
+                            </p>
+                        </div>
+                        <span className="text-[8px] bg-primary/20 text-primary px-2 py-0.5 rounded font-black uppercase tracking-widest">
+                            WEEK {selectedDay.week} • DAY {selectedDay.day}
+                        </span>
                     </div>
-                    <div className="overflow-x-auto no-scrollbar">
-                        <table className="w-full text-left">
-                            <thead className="bg-surface-variant/30 text-[9px] font-black uppercase text-on-surface-variant/60 border-b border-outline/10">
-                                <tr>
-                                    <th className="p-4 w-16 text-center">RANK</th>
-                                    <th className="p-4">FIGHTER</th>
-                                    <th className="p-4 text-right">PTS</th>
-                                    <th className="p-4 text-right">PPG</th>
-                                    <th className="p-4 text-right">W-L</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-outline/10">
-                                {standings
-                                    .filter(s => {
-                                        const isFinalDay = activeLeague?.days?.some(d => d.week === 4 && d.day === 2);
-                                        if (isFinalDay && activeLeague?.status === 'completed') {
-                                            const finalDay = activeLeague.days?.find(d => d.week === 4 && d.day === 2);
-                                            return finalDay?.attendees.includes(s.playerId);
-                                        }
-                                        return s.gamesPlayed > 0;
-                                    })
-                                    .map((s, idx) => {
-                                        const p = scoreboardPlayers.find(sp => sp.id === s.playerId);
-                                        const isChamp = idx === 0 && s.eligibleForTrophies; 
-                                        const isIneligible = !s.eligibleForTrophies;
+                    {isLeagueDayComplete(selectedDay) ? (
+                        <div className="p-10 text-center flex flex-col items-center justify-center gap-3">
+                            <div className="w-12 h-12 bg-zinc-900 border-2 border-white/5 rounded-full flex items-center justify-center">
+                                <span className="text-xl">🏁</span>
+                            </div>
+                            <p className="text-xs font-black text-on-surface-variant/50 uppercase tracking-widest italic">
+                                No live matches right now
+                            </p>
+                            {selectedDay.day === 2 ? (
+                                <span className="text-[10px] text-primary font-black uppercase tracking-widest animate-pulse max-w-sm">
+                                    A NEW WEEK HAS TO START FOR THE LIVE LEADERBOARD
+                                </span>
+                            ) : (
+                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                                    All matches for this day are finished and closed
+                                </span>
+                            )}
+                        </div>
+                    ) : dayStandings.length === 0 ? (
+                        <div className="p-8 text-center">
+                            <p className="text-xs font-black text-on-surface-variant/40 uppercase tracking-widest italic">
+                                No battles completed today yet...
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto no-scrollbar">
+                            <table className="w-full text-left">
+                                <thead className="bg-surface-variant/30 text-[9px] font-black uppercase text-on-surface-variant/60 border-b border-outline/10">
+                                    <tr>
+                                        <th className="p-4 w-16 text-center">RANK</th>
+                                        <th className="p-4">FIGHTER</th>
+                                        <th className="p-4 text-right">PTS</th>
+                                        <th className="p-4 text-right">PPG</th>
+                                        <th className="p-4 text-right">W-L</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-outline/10">
+                                    {dayStandings.map((s, idx) => {
+                                        const p = state.players.find(sp => sp.id === s.playerId) || playerMap.get(s.playerId);
+                                        const isChamp = idx === 0;
                                         const isAbsent = p && !p.isPresent;
 
                                         return (
-                                            <tr key={s.playerId} className={`hover:bg-primary/5 transition-colors ${isChamp && activeLeague?.status === 'completed' ? "bg-primary/10" : ""} ${isIneligible || isAbsent ? "opacity-50 grayscale" : ""}`}>
-                                            <td className={`p-4 text-center font-headline font-black italic ${isChamp ? "text-primary text-2xl" : "text-on-surface-variant/40"}`}>
-                                                {isChamp ? "👑" : idx + 1}
-                                            </td>
-                                            <td className={`p-4 font-headline font-black italic uppercase tracking-tight ${isChamp ? "text-primary text-lg" : "text-on-surface"}`}>
-                                                <div className="flex items-center gap-2">
-                                                    {p?.name}
-                                                    {isAbsent && <span className="text-[8px] border border-outline/20 text-on-surface-variant/60 px-1 rounded">ABSENT</span>}
-                                                </div>
-                                                {s.bonusPoints > 0 && <span className="ml-2 text-[8px] bg-primary/20 text-primary px-1 rounded">+{s.bonusPoints} BP</span>}
-                                                {s.noShows > 0 && <span className="ml-2 text-[8px] bg-red-900/20 text-red-500 px-1 rounded">{s.noShows} NS</span>}
-                                            </td>
-                                            <td className="p-4 text-right text-primary font-headline font-black italic text-lg">{s.points}</td>
-                                            <td className="p-4 text-right text-on-surface-variant font-mono text-xs">{s.ppg.toFixed(2)}</td>
-                                            <td className="p-4 text-right text-on-surface-variant font-black text-[10px]">{s.wins}-{s.losses}</td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                                            <tr key={s.playerId} className={`hover:bg-primary/5 transition-colors ${isChamp ? "bg-primary/5" : ""} ${isAbsent ? "opacity-50 grayscale" : ""}`}>
+                                                <td className={`p-4 text-center font-headline font-black italic ${isChamp ? "text-primary text-2xl" : "text-on-surface-variant/40"}`}>
+                                                    {isChamp ? "👑" : idx + 1}
+                                                </td>
+                                                <td className={`p-4 font-headline font-black italic uppercase tracking-tight ${isChamp ? "text-primary text-lg" : "text-on-surface"}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        {p?.name}
+                                                        {isAbsent && <span className="text-[8px] border border-outline/20 text-on-surface-variant/60 px-1 rounded">ABSENT</span>}
+                                                    </div>
+                                                    {s.bonusPoints > 0 && <span className="ml-2 text-[8px] bg-primary/20 text-primary px-1 rounded">+{s.bonusPoints} BP</span>}
+                                                    {s.noShows > 0 && <span className="ml-2 text-[8px] bg-red-900/20 text-red-500 px-1 rounded">{s.noShows} NS</span>}
+                                                </td>
+                                                <td className="p-4 text-right text-primary font-headline font-black italic text-lg">{s.points}</td>
+                                                <td className="p-4 text-right text-on-surface-variant font-mono text-xs">{s.ppg.toFixed(2)}</td>
+                                                <td className="p-4 text-right text-on-surface-variant font-black text-[10px]">{s.wins}-{s.losses}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
-
+            </div>
+        ) : (
+            <>
                 <div className="space-y-6">
                     {/* EXHIBITION CHRONICLES - Global Custom Match Log */}
                     {isAdmin && allCustomMatches.length > 0 && (

@@ -1139,13 +1139,34 @@ const App: React.FC = () => {
         );
       case 'roster':
         return (
-          <RosterManager 
-            players={state.players}
-            onAddPlayer={handleAddPlayer}
-            onRemovePlayer={handleRemovePlayer}
-            onUpdatePresence={handleTogglePresence}
-            isAdmin={isAdmin}
-          />
+          isAdmin ? (
+            <RosterManager 
+              players={state.players}
+              onAddPlayer={handleAddPlayer}
+              onRemovePlayer={handleRemovePlayer}
+              onUpdatePresence={handleTogglePresence}
+              isAdmin={isAdmin}
+            />
+          ) : (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
+              <div className="relative mb-8 group">
+                <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse-slow group-hover:bg-primary/40 transition-all"></div>
+                <div className="w-24 h-24 bg-surface/90 backdrop-blur-md rounded-full flex items-center justify-center border-4 border-primary/30 shadow-[0_0_30px_rgba(168,85,247,0.3)] relative z-10 aura-glow">
+                  <IconLock className="w-12 h-12 text-primary animate-pulse" />
+                </div>
+              </div>
+              <h2 className="text-4xl font-headline font-black text-on-surface mb-3 italic uppercase tracking-tighter transform -skew-x-12 drop-shadow-md">God Mode Locked</h2>
+              <p className="text-on-surface-variant/60 text-sm max-w-xs mb-10 font-medium leading-relaxed uppercase tracking-wide">
+                Only those with the power of a God can access and modify the roster of Z-Fighters.
+              </p>
+              <button
+                onClick={() => setShowAdminModal(true)}
+                className="bg-primary hover:bg-primary-container text-white px-10 py-5 rounded-2xl font-headline font-black italic uppercase tracking-widest text-lg shadow-lg shadow-primary/30 transition-all active:scale-95 manga-skew"
+              >
+                <span className="manga-skew-reverse">Unlock God Mode</span>
+              </button>
+            </div>
+          )
         );
       case 'stats':
         return <PlayerStatsHub players={state.players} />;
