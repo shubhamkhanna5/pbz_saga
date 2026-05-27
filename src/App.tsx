@@ -29,6 +29,224 @@ import { useDialog } from './components/ui/DialogProvider';
 import { IconLock } from './components/ui/Icons';
 import { supabase } from './lib/supabase';
 
+// ============================================================================
+// CONFLICT RESOLUTION & STATE MERGING HELPERS (Multiple Devices Safety Pattern)
+// ============================================================================
+
+function mergePlayers(local: Player[], server: Player[], lastKnown: Player[] | null): Player[] {
+  if (!server) return local;
+  if (!local) return server;
+  if (!lastKnown) {
+    const merged = [...local];
+    server.forEach(sp => {
+      const idx = merged.findIndex(p => p.id === sp.id);
+      if (idx === -1) {
+        merged.push(sp);
+      } else {
+        const lp = merged[idx];
+        const spGames = (sp.gamesPlayed || 0);
+        const lpGames = (lp.gamesPlayed || 0);
+        if (spGames >= lpGames) {
+          merged[idx] = { ...lp, ...sp };
+        }
+      }
+    });
+    return merged;
+  }
+
+  const idToLast = new Map(lastKnown.map(p => [p.id, p]));
+  const idToLocal = new Map(local.map(p => [p.id, p]));
+  
+  const merged: Player[] = [];
+  const allIds = Array.from(new Set([
+    ...local.map(p => p.id),
+    ...server.map(p => p.id)
+  ]));
+
+  allIds.forEach(id => {
+    const lPlayer = idToLocal.get(id);
+    const sPlayer = server.find(p => p.id === id);
+    const lkPlayer = idToLast.get(id);
+
+    if (lPlayer && sPlayer) {
+      if (!lkPlayer) {
+        const sGames = (sPlayer.gamesPlayed || 0);
+        const lGames = (lPlayer.gamesPlayed || 0);
+        merged.push(sGames >= lGames ? sPlayer : lPlayer);
+      } else {
+        const mergedPlayer = { ...sPlayer };
+        
+        if (lPlayer.isPresent !== lkPlayer.isPresent && sPlayer.isPresent === lkPlayer.isPresent) {
+          mergedPlayer.isPresent = lPlayer.isPresent;
+        }
+        
+        if (lPlayer.dragonBalls !== lkPlayer.dragonBalls && sPlayer.dragonBalls === lkPlayer.dragonBalls) {
+          mergedPlayer.dragonBalls = lPlayer.dragonBalls;
+        }
+        
+        if (lPlayer.skill !== lkPlayer.skill && sPlayer.skill === lkPlayer.skill) {
+          mergedPlayer.skill = lPlayer.skill;
+        }
+
+        const lGames = (lPlayer.gamesPlayed || 0);
+        const sGames = (sPlayer.gamesPlayed || 0);
+        if (lGames > sGames) {
+          mergedPlayer.gamesPlayed = lPlayer.gamesPlayed;
+          mergedPlayer.wins = lPlayer.wins;
+          mergedPlayer.losses = lPlayer.losses;
+          mergedPlayer.totalPoints = lPlayer.totalPoints;
+          mergedPlayer.bonusPoints = lPlayer.bonusPoints;
+          mergedPlayer.noShows = lPlayer.noShows;
+          mergedPlayer.clutchWins = lPlayer.clutchWins;
+          mergedPlayer.bagelsGiven = lPlayer.bagelsGiven;
+          mergedPlayer.currentStreak = lPlayer.currentStreak;
+          mergedPlayer.stats = lPlayer.stats;
+        }
+
+        const badgeKeys = new Set<string>();
+        const mergedBadges: any[] = [];
+        const combinedBadges = [...(lPlayer.badges || []), ...(sPlayer.badges || [])];
+        combinedBadges.forEach(b => {
+          const key = b.badgeId || JSON.stringify(b);
+          if (!badgeKeys.has(key)) {
+            badgeKeys.add(key);
+            mergedBadges.push(b);
+          }
+        });
+        mergedPlayer.badges = mergedBadges;
+
+        merged.push(mergedPlayer);
+      }
+    } else if (lPlayer) {
+      merged.push(lPlayer);
+    } else if (sPlayer) {
+      merged.push(sPlayer);
+    }
+  });
+
+  return merged;
+}
+
+function mergeLeagues(local: League, server: League, lastKnown: League | null): League {
+  if (!server) return local;
+  if (!local) return server;
+  if (!lastKnown) return server;
+
+  const merged = { ...server };
+
+  if (local.name !== lastKnown.name && server.name === lastKnown.name) {
+    merged.name = local.name;
+  }
+  
+  if (local.status !== lastKnown.status && server.status === lastKnown.status) {
+    merged.status = local.status;
+  }
+
+  const mergedDays = (server.days || []).map(serverDay => {
+    const localDay = (local.days || []).find(d => d.id === serverDay.id);
+    const lastDay = (lastKnown.days || []).find(d => d.id === serverDay.id);
+
+    if (!localDay) return serverDay;
+    if (!lastDay) return localDay;
+
+    const mergedMatches = (serverDay.matches || []).map(serverMatch => {
+      const localMatch = (localDay.matches || []).find(m => m.id === serverMatch.id);
+      const lastMatch = (lastDay.matches || []).find(m => m.id === serverMatch.id);
+
+      if (!localMatch) return serverMatch;
+      if (!lastMatch) return localMatch;
+
+      if (localMatch.isCompleted && !serverMatch.isCompleted) {
+        return {
+          ...serverMatch,
+          ...localMatch,
+          isCompleted: true
+        };
+      }
+      
+      const mergedMatch = { ...serverMatch };
+      if (localMatch.isCustom !== lastMatch.isCustom) {
+        mergedMatch.isCustom = localMatch.isCustom;
+      }
+      if (localMatch.timestamp !== lastMatch.timestamp) {
+        mergedMatch.timestamp = localMatch.timestamp;
+      }
+      if (JSON.stringify(localMatch.events || []) !== JSON.stringify(lastMatch.events || [])) {
+        mergedMatch.events = localMatch.events;
+      }
+      return mergedMatch;
+    });
+
+    return {
+      ...serverDay,
+      matches: mergedMatches,
+      status: ((serverDay.status === 'completed' || localDay.status === 'completed') ? 'completed' : serverDay.status) as any
+    };
+  });
+
+  merged.days = mergedDays;
+  return merged;
+}
+
+function mergeSessions(local: Session, server: Session, lastKnown: Session | null): Session {
+  if (!server) return local;
+  if (!local) return server;
+  if (!lastKnown) return server;
+
+  const merged = { ...server };
+  const lHistory = local.history || [];
+  const sHistory = server.history || [];
+  if (lHistory.length > sHistory.length) {
+    merged.history = lHistory;
+  }
+  
+  if (local.activeCourts !== lastKnown.activeCourts) {
+    merged.activeCourts = local.activeCourts;
+  }
+  if (local.rotationType !== lastKnown.rotationType) {
+    merged.rotationType = local.rotationType;
+  }
+  if (local.playMode !== lastKnown.playMode) {
+    merged.playMode = local.playMode;
+  }
+  if (local.teamAssignmentMode !== lastKnown.teamAssignmentMode) {
+    merged.teamAssignmentMode = local.teamAssignmentMode;
+  }
+  
+  return merged;
+}
+
+function mergeTournaments(local: Tournament, server: Tournament, lastKnown: Tournament | null): Tournament {
+  if (!server) return local;
+  if (!local) return server;
+  if (!lastKnown) return server;
+
+  const merged = { ...server };
+
+  const mergedMatches = (server.matches || []).map((serverMatch: any) => {
+    const localMatch = (local.matches || []).find((m: any) => m.id === serverMatch.id);
+    
+    if (localMatch && localMatch.status === 'completed' && serverMatch.status !== 'completed') {
+      return localMatch;
+    }
+    return serverMatch;
+  });
+
+  merged.matches = mergedMatches;
+  
+  if (local.winnerId && !server.winnerId) {
+    merged.winnerId = local.winnerId;
+  }
+  if (local.status !== lastKnown.status && server.status === lastKnown.status) {
+    merged.status = local.status;
+  }
+  if (local.stage !== lastKnown.stage && server.stage === lastKnown.stage) {
+    merged.stage = local.stage;
+  }
+
+  return merged;
+}
+
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(loadState());
   const [isRestoring, setIsRestoring] = useState(false);
@@ -51,6 +269,19 @@ const App: React.FC = () => {
   // Backup Concurrency Locks
   const isBackingUpRef = useRef(false);
   const isResettingRef = useRef(false);
+
+  // Keep track of the last known state loaded from Supabase to detect if backend has new data
+  const lastServerStateRef = useRef<{
+    players: Player[] | null;
+    activeLeague: League | null;
+    activeSession: Session | null;
+    activeTournament: Tournament | null;
+  }>({
+    players: null,
+    activeLeague: null,
+    activeSession: null,
+    activeTournament: null,
+  });
   
   // State Ref for Heartbeat (Always holds fresh state without re-rendering)
   const stateRef = useRef(state);
@@ -69,39 +300,161 @@ const App: React.FC = () => {
     const manualRestore = localStorage.getItem("manual_restore") === "true";
     if (isRestoring || isResettingRef.current || isOffline || manualRestore) return;
     
+    const currentLocal = stateRef.current;
+    const watermarks = lastServerStateRef.current;
+
+    // Check if there are any actual changes compared to the last sync watermark
+    const playersChanged = !watermarks.players || 
+        JSON.stringify(currentLocal.players) !== JSON.stringify(watermarks.players);
+
+    const leagueChanged = currentLocal.activeLeague && (
+        !watermarks.activeLeague || 
+        JSON.stringify(currentLocal.activeLeague) !== JSON.stringify(watermarks.activeLeague)
+    );
+
+    const sessionChanged = currentLocal.activeSession && (
+        !watermarks.activeSession || 
+        JSON.stringify(currentLocal.activeSession) !== JSON.stringify(watermarks.activeSession)
+    );
+
+    const tournamentChanged = currentLocal.activeTournament && (
+        !watermarks.activeTournament || 
+        JSON.stringify(currentLocal.activeTournament) !== JSON.stringify(watermarks.activeTournament)
+    );
+
+    if (!playersChanged && !leagueChanged && !sessionChanged && !tournamentChanged) {
+        console.log("⏹️ SYNC SKIPPED: No local changes detected since last watermark sync.");
+        setSyncStatus('synced');
+        return;
+    }
+
     setSyncStatus('syncing');
-    console.log("🔄 SYNC START: Pushing local changes...");
+    console.log("🔄 SYNC START: Checking for new backend data first...");
+    
     try {
-        // 1. Sync Players
-        if (stateRef.current.players.length > 0) {
-            await syncFullRoster(stateRef.current.players);
+        let finalPlayersToSync = currentLocal.players;
+        let finalLeagueToSync = currentLocal.activeLeague;
+        let finalSessionToSync = currentLocal.activeSession;
+        let finalTournamentToSync = currentLocal.activeTournament;
+
+        let localStateUpdated = false;
+
+        // --- 1. Check and Sync Players ---
+        if (playersChanged && currentLocal.players.length > 0) {
+            try {
+                const serverPlayers = await getPlayers();
+                const serverStateChanged = watermarks.players && 
+                    JSON.stringify(serverPlayers) !== JSON.stringify(watermarks.players);
+                    
+                if (serverStateChanged) {
+                    console.log("⚠️ Conflict detected on players! Merging remote changes...");
+                    const merged = mergePlayers(currentLocal.players, serverPlayers, watermarks.players);
+                    finalPlayersToSync = merged;
+                    localStateUpdated = true;
+                }
+            } catch (e) {
+                console.warn("Failed to check players on server before sync, default to local:", e);
+            }
         }
 
-        // 2. Sync Active League
-        if (stateRef.current.activeLeague) {
-            await upsertLeagues([stateRef.current.activeLeague]);
-            
-            // Sync matches for the active league
-            const allMatches = (stateRef.current.activeLeague.days || []).flatMap(day => 
-                (day.matches || []).map(m => ({ ...m, leagueId: stateRef.current.activeLeague!.id, dayId: day.id }))
+        // --- 2. Check and Sync Active League ---
+        if (leagueChanged && currentLocal.activeLeague) {
+            try {
+                const serverLeague = await getActiveLeague(true);
+                const serverStateChanged = serverLeague && watermarks.activeLeague && 
+                    JSON.stringify(serverLeague) !== JSON.stringify(watermarks.activeLeague);
+                    
+                if (serverStateChanged) {
+                    console.log("⚠️ Conflict detected on active league! Merging remote changes...");
+                    const merged = mergeLeagues(currentLocal.activeLeague, serverLeague, watermarks.activeLeague);
+                    finalLeagueToSync = merged;
+                    localStateUpdated = true;
+                }
+            } catch (e) {
+                console.warn("Failed to check league on server before sync, default to local:", e);
+            }
+        }
+
+        // --- 3. Check and Sync Active Session ---
+        if (sessionChanged && currentLocal.activeSession) {
+            try {
+                const serverSession = await getLatestSession();
+                const serverStateChanged = serverSession && watermarks.activeSession && 
+                    JSON.stringify(serverSession) !== JSON.stringify(watermarks.activeSession);
+                    
+                if (serverStateChanged) {
+                    console.log("⚠️ Conflict detected on active session! Merging remote changes...");
+                    const merged = mergeSessions(currentLocal.activeSession, serverSession, watermarks.activeSession);
+                    finalSessionToSync = merged;
+                    localStateUpdated = true;
+                }
+            } catch (e) {
+                console.warn("Failed to check session on server before sync, default to local:", e);
+            }
+        }
+
+        // --- 4. Check and Sync Active Tournament ---
+        if (tournamentChanged && currentLocal.activeTournament) {
+            try {
+                const serverTournament = await getActiveTournament();
+                const serverStateChanged = serverTournament && watermarks.activeTournament && 
+                    JSON.stringify(serverTournament) !== JSON.stringify(watermarks.activeTournament);
+                    
+                if (serverStateChanged) {
+                    console.log("⚠️ Conflict detected on active tournament! Merging remote changes...");
+                    const merged = mergeTournaments(currentLocal.activeTournament, serverTournament, watermarks.activeTournament);
+                    finalTournamentToSync = merged;
+                    localStateUpdated = true;
+                }
+            } catch (e) {
+                console.warn("Failed to check tournament on server before sync, default to local:", e);
+            }
+        }
+
+        // Apply any merged changes to our local state so the view stays in sync
+        if (localStateUpdated) {
+            setState(prev => ({
+                ...prev,
+                players: finalPlayersToSync,
+                activeLeague: finalLeagueToSync,
+                activeSession: finalSessionToSync,
+                activeTournament: finalTournamentToSync
+            }));
+        }
+
+        // 5. Push final states to cloud
+        if (playersChanged && finalPlayersToSync.length > 0) {
+            await syncFullRoster(finalPlayersToSync);
+        }
+
+        if (leagueChanged && finalLeagueToSync) {
+            await upsertLeagues([finalLeagueToSync]);
+            const allMatches = (finalLeagueToSync.days || []).flatMap(day => 
+                (day.matches || []).map(m => ({ ...m, leagueId: finalLeagueToSync!.id, dayId: day.id }))
             );
             if (allMatches.length > 0) {
                 await upsertMatches(allMatches);
             }
         }
 
-        // 3. Sync Session
-        if (stateRef.current.activeSession) {
-            await upsertSession(stateRef.current.activeSession);
+        if (sessionChanged && finalSessionToSync) {
+            await upsertSession(finalSessionToSync);
         }
 
-        // 4. Sync Tournament
-        if (stateRef.current.activeTournament) {
-            await upsertTournaments([stateRef.current.activeTournament]);
+        if (tournamentChanged && finalTournamentToSync) {
+            await upsertTournaments([finalTournamentToSync]);
         }
+
+        // Update sync watermarks
+        lastServerStateRef.current = {
+            players: JSON.parse(JSON.stringify(finalPlayersToSync)),
+            activeLeague: finalLeagueToSync ? JSON.parse(JSON.stringify(finalLeagueToSync)) : null,
+            activeSession: finalSessionToSync ? JSON.parse(JSON.stringify(finalSessionToSync)) : null,
+            activeTournament: finalTournamentToSync ? JSON.parse(JSON.stringify(finalTournamentToSync)) : null,
+        };
 
         setSyncStatus('synced');
-        console.log("⚡ SYNC COMPLETE: Local data is now authoritative in Cloud");
+        console.log("⚡ SYNC COMPLETE: Local changes checking/merging finished successfully.");
 
         // ✅ AUTO-CLEAR MANUAL RESTORE: After a successful authoritative push, we return to cloud-first
         if (localStorage.getItem("manual_restore") === "true") {
@@ -216,6 +569,14 @@ const App: React.FC = () => {
 
         setSupabaseLeague(repairedLeague);
 
+        // Update watermark
+        lastServerStateRef.current = {
+            players: JSON.parse(JSON.stringify(players || [])),
+            activeLeague: repairedLeague ? JSON.parse(JSON.stringify(repairedLeague)) : null,
+            activeSession: session ? JSON.parse(JSON.stringify(session)) : null,
+            activeTournament: tournament ? JSON.parse(JSON.stringify(tournament)) : null,
+        };
+
         // Hydrate Local State
         setState(prev => {
             // MERGE LOGIC: Prefer Supabase as Authority (unless offline data exists and is newer)
@@ -317,6 +678,7 @@ const App: React.FC = () => {
           console.log("🏆 CLOUD SAGA UPDATE DETECTED:", payload.new?.name || payload.old?.id);
           if (payload.eventType === 'DELETE') {
              setState(prev => ({ ...prev, activeLeague: null }));
+             lastServerStateRef.current.activeLeague = null;
              return;
           }
           
@@ -334,6 +696,7 @@ const App: React.FC = () => {
                         }))
                     }))
                 };
+                lastServerStateRef.current.activeLeague = JSON.parse(JSON.stringify(updatedLeague));
                 return { ...prev, activeLeague: updatedLeague };
             }
             return prev;
@@ -359,20 +722,22 @@ const App: React.FC = () => {
            // This ensures all derived stats are correct
            getActiveLeague().then(repairedLeague => {
                if (repairedLeague) {
+                   const updatedLeague = {
+                       ...stateRef.current.activeLeague,
+                       ...repairedLeague,
+                       days: (repairedLeague.days || []).map((day: any) => ({
+                           ...day,
+                           matches: (day.matches || []).map((match: any) => ({
+                               ...match,
+                               isCustom: match.isCustom || match.is_custom || false,
+                               timestamp: match.timestamp || null
+                           }))
+                       }))
+                   } as League;
+                   lastServerStateRef.current.activeLeague = JSON.parse(JSON.stringify(updatedLeague));
                    setState(prev => ({ 
                        ...prev, 
-                       activeLeague: {
-                           ...prev.activeLeague,
-                           ...repairedLeague,
-                           days: (repairedLeague.days || []).map((day: any) => ({
-                               ...day,
-                               matches: (day.matches || []).map((match: any) => ({
-                                   ...match,
-                                   isCustom: match.isCustom || match.is_custom || false,
-                                   timestamp: match.timestamp || null
-                               }))
-                           }))
-                       } as League
+                       activeLeague: updatedLeague
                    }));
                }
            });
@@ -398,6 +763,7 @@ const App: React.FC = () => {
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
             import('./services/queryService').then(({ getPlayers }) => {
               getPlayers().then(roster => {
+                lastServerStateRef.current.players = JSON.parse(JSON.stringify(roster));
                 setState(prev => ({ ...prev, players: roster }));
               });
             });

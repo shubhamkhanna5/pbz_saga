@@ -162,10 +162,10 @@ const RosterManager: React.FC<RosterManagerProps> = ({
                                 <IconCheck size={20} className="drop-shadow-sm" />
                             </div>
                             <div>
-                                <span className={`font-headline font-black italic uppercase tracking-tight text-xl transition-colors duration-500 ${player.isPresent ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                                <span className={`font-headline font-black italic uppercase tracking-tight text-xl transition-colors duration-500 ${player.isPresent ? 'text-zinc-950' : 'text-on-surface-variant'}`}>
                                     {player.name.toUpperCase()}
                                 </span>
-                                <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mt-0.5 transition-colors duration-500">
+                                <div className={`text-[8.5px] font-black uppercase tracking-widest mt-0.5 transition-colors duration-500 ${player.isPresent ? 'text-purple-700' : 'text-on-surface-variant'}`}>
                                     {player.isPresent ? 'READY FOR BATTLE' : 'OFFLINE'}
                                 </div>
                             </div>
@@ -180,7 +180,7 @@ const RosterManager: React.FC<RosterManagerProps> = ({
                                     onRemovePlayer(player.id);
                                 });
                             }}
-                            className="p-3 text-on-surface-variant/40 hover:text-primary transition-colors active:scale-95"
+                            className={`p-3 transition-colors active:scale-95 ${player.isPresent ? 'text-zinc-400 hover:text-red-500' : 'text-on-surface-variant/40 hover:text-primary'}`}
                         >
                             <IconTrash size={20} />
                         </button>

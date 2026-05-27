@@ -17,10 +17,12 @@ interface CustomMatchModalProps {
 const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, onCancel, isDarkMode, onUpdateDragonBalls }) => {
   const [teamA, setTeamA] = useState<string[]>([]);
   const [teamB, setTeamB] = useState<string[]>([]);
-  const [scoreA, setScoreA] = useState(0);
-  const [scoreB, setScoreB] = useState(0);
+  const [scoreA, setScoreA] = useState<string>('');
+  const [scoreB, setScoreB] = useState<string>('');
   const [matchType, setMatchType] = useState<'singles' | 'doubles'>('doubles');
   const [awardedDBPlayers, setAwardedDBPlayers] = useState<Set<string>>(new Set());
+  const [activeDropdown, setActiveDropdown] = useState<{ team: 'A' | 'B'; index: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handlePlayerSelect = (playerId: string, team: 'A' | 'B', index: number) => {
     if (team === 'A') {
@@ -46,7 +48,10 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
     if (cleanA.length !== needed || cleanB.length !== needed) {
       return;
     }
-    onSave(cleanA, cleanB, scoreA, scoreB, matchType);
+    const finalScoreA = scoreA === '' ? 0 : parseInt(scoreA, 10);
+    const finalScoreB = scoreB === '' ? 0 : parseInt(scoreB, 10);
+
+    onSave(cleanA, cleanB, finalScoreA, finalScoreB, matchType);
     vibrate('success');
   };
 
@@ -57,23 +62,87 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
     const otherTeam = team === 'A' ? teamB : teamA;
     const sameTeamOtherIndices = (team === 'A' ? teamA : teamB).filter((_, i) => i !== index);
 
+    const selectedPlayer = players.find(p => p.id === currentId);
+    const isOpen = activeDropdown?.team === team && activeDropdown?.index === index;
+
+    const filteredPlayers = sortedPlayers.filter(p => 
+      p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
-      <div className="space-y-2">
-        <select
-          value={currentId || ''}
-          onChange={(e) => handlePlayerSelect(e.target.value, team, index)}
-          className="w-full bg-zinc-950 border-2 border-zinc-800 rounded-xl px-4 py-3 text-white font-black text-xs uppercase tracking-widest focus:border-primary outline-none appearance-none cursor-pointer"
+      <div className="space-y-2 relative">
+        {/* Searchable Custom Dropdown Trigger */}
+        <button
+          type="button"
+          onClick={() => {
+            if (isOpen) {
+              setActiveDropdown(null);
+            } else {
+              setActiveDropdown({ team, index });
+              setSearchQuery('');
+            }
+            vibrate('light');
+          }}
+          className={`w-full bg-zinc-950 border-2 ${isOpen ? 'border-primary shadow-[0_0_12px_rgba(168,85,247,0.25)]' : 'border-zinc-800'} rounded-xl px-4 py-3 text-white font-black text-xs uppercase tracking-widest flex items-center justify-between cursor-pointer hover:border-zinc-700 transition-all text-left relative z-10`}
         >
-          <option value="">Select Fighter</option>
-          {sortedPlayers.map(p => {
-            const isSelectedElsewhere = otherTeam.includes(p.id) || sameTeamOtherIndices.includes(p.id);
-            return (
-              <option key={p.id} value={p.id} disabled={isSelectedElsewhere}>
-                {p.name.toUpperCase()}
-              </option>
-            );
-          })}
-        </select>
+          <span className="truncate">
+            {selectedPlayer ? selectedPlayer.name.toUpperCase() : 'SELECT FIGHTER'}
+          </span>
+          <span className="text-zinc-500 font-mono text-[9px] ml-2 leading-none">
+            {isOpen ? '▲' : '▼'}
+          </span>
+        </button>
+
+        {/* Dropdown Options List */}
+        {isOpen && (
+          <div className="absolute left-0 right-0 mt-1 z-50 bg-zinc-950 border-2 border-zinc-800 rounded-xl p-2 shadow-2xl space-y-2 max-h-56 overflow-y-auto w-full">
+            <div className="sticky top-0 bg-zinc-950 pb-1.5 pt-0.5 z-10 border-b border-zinc-800/80">
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="SEARCH FIGHTER..."
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-white font-black text-[10px] uppercase tracking-wider outline-none focus:border-primary placeholder-zinc-600 block"
+              />
+            </div>
+            <div className="space-y-0.5 pt-1">
+              {filteredPlayers.length === 0 ? (
+                <div className="text-[9px] text-zinc-600 font-black uppercase text-center py-4 tracking-wider">
+                  No Fighters Found
+                </div>
+              ) : (
+                filteredPlayers.map(p => {
+                  const isSelectedElsewhere = otherTeam.includes(p.id) || sameTeamOtherIndices.includes(p.id);
+                  const isSelectedThis = p.id === currentId;
+
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={isSelectedElsewhere}
+                      onClick={() => {
+                        handlePlayerSelect(p.id, team, index);
+                        setActiveDropdown(null);
+                        setSearchQuery('');
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-lg font-black text-[11px] uppercase tracking-wider transition-colors flex items-center justify-between
+                        ${isSelectedThis 
+                          ? 'bg-primary text-white font-black' 
+                          : isSelectedElsewhere 
+                          ? 'text-zinc-600 cursor-not-allowed bg-zinc-900/10' 
+                          : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-white'}`}
+                    >
+                      <span className="truncate">{p.name.toUpperCase()}</span>
+                      {isSelectedThis && <span className="text-[7.5px] bg-white/20 px-1 py-0.5 rounded text-white font-bold shrink-0 ml-2">SELECTED</span>}
+                      {isSelectedElsewhere && <span className="text-[7.5px] text-zinc-600 font-bold shrink-0 ml-2">TAKEN</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
         
         {currentId && onUpdateDragonBalls && (
           <div className="flex items-center gap-2 px-1">
@@ -127,11 +196,22 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto pb-32"
     >
+      {/* Click-outside backdrop to close any open searchable selects */}
+      {activeDropdown && (
+        <div 
+          className="fixed inset-0 z-10 bg-transparent"
+          onClick={() => {
+            setActiveDropdown(null);
+            setSearchQuery('');
+          }}
+        />
+      )}
+
       <motion.div 
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 20 }}
-        className="bg-zinc-900 border-2 border-zinc-800 rounded-[2rem] sm:rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden my-auto"
+        className="bg-zinc-900 border-2 border-zinc-800 rounded-[2rem] sm:rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden my-auto relative z-20 font-sans"
       >
         <div className="p-4 sm:p-8 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
           <div className="flex items-center gap-3">
@@ -180,11 +260,15 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
               <div className="flex items-center gap-4 bg-zinc-950 p-2 rounded-2xl border-2 border-zinc-800 focus-within:border-primary/50 transition-all">
                 <span className="text-[10px] font-black text-zinc-500 uppercase ml-4 tracking-widest">Score</span>
                 <input 
-                  type="number" 
+                  type="text" 
                   inputMode="numeric"
                   pattern="[0-9]*"
+                  placeholder="0"
                   value={scoreA}
-                  onChange={(e) => setScoreA(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setScoreA(val);
+                  }}
                   className="flex-1 bg-transparent text-white font-headline font-black text-3xl sm:text-4xl text-center outline-none py-2"
                 />
               </div>
@@ -207,11 +291,15 @@ const CustomMatchModal: React.FC<CustomMatchModalProps> = ({ players, onSave, on
               <div className="flex items-center gap-4 bg-zinc-950 p-2 rounded-2xl border-2 border-zinc-800 focus-within:border-secondary/50 transition-all">
                 <span className="text-[10px] font-black text-zinc-500 uppercase ml-4 tracking-widest">Score</span>
                 <input 
-                  type="number" 
+                  type="text" 
                   inputMode="numeric"
                   pattern="[0-9]*"
+                  placeholder="0"
                   value={scoreB}
-                  onChange={(e) => setScoreB(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setScoreB(val);
+                  }}
                   className="flex-1 bg-transparent text-white font-headline font-black text-3xl sm:text-4xl text-center outline-none py-2"
                 />
               </div>
